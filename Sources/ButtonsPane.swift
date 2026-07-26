@@ -62,6 +62,10 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         table.usesAlternatingRowBackgroundColors = true
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle   // action 欄補滿剩餘寬度
         table.style = .plain
+        // 欄寬不給拖：這是固定兩欄的清單，可拖的分隔線只會讓人以為右邊還有一欄
+        table.allowsColumnResizing = false
+        table.allowsColumnReordering = false
+        table.allowsColumnSelection = false
         table.target = self
 
         let ctx = NSMenu()
@@ -197,6 +201,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             }
             rows = out
             table.reloadData()
+            table.sizeLastColumnToFit()   // 撐滿捲動區，右側不留下看似空欄的縫隙
             updateEditor()
             onStatus?("\(deviceName) · \(rows.count) buttons")
         } catch {
