@@ -53,6 +53,7 @@ If remaps do nothing, run `nibble doctor` — it reports whether the engine is r
 | `nibble config init\|show` | Create from current state / print `~/.config/nibble.json` |
 | `nibble apply` | Apply config file (runtime writes) |
 | `nibble replay install\|uninstall` | Auto-`apply` at login via one-shot launchd agent |
+| `nibble startup [on\|off]` | Start the menu bar at login (needs `/Applications/Nibble.app`) |
 | `nibble buttons` | Enumerate programmable buttons (0x1b04 MX-series / 0x8110 G-series) |
 | `nibble spy [seconds]` | Live button-event monitor, G-series diagnostic; auto-stops after N seconds |
 | `nibble remap` | Interactive remap: press a physical button → assign keystroke / system action / disable |
@@ -84,6 +85,8 @@ Exit codes: `0` ok · `1` no awake device or value not applied · `2` transport/
 | `rgb` | string | `"off"`, `"cycle"`, `"breathing"`, or `"keep"` |
 | `wheelMode` | string | `"free"` / `"ratchet"` (MX-series only) |
 | `wheelThreshold` | int | 1–254 |
+| `lowBatteryNotify` | bool | `false` silences the alert; omitted means on |
+| `lowBatteryPercent` | int | 5–50, default 15 — out-of-range values are clamped, not obeyed |
 
 Omitted keys are left untouched.
 
@@ -113,6 +116,9 @@ Config keeps them under `buttonProfiles` with `activeProfile` naming the live on
 
 - All writes are **runtime** (device RAM, persist flag = 0). A power cycle reverts the mouse to its onboard profile — `nibble replay install` re-applies your config at login.
 - The **General** tab writes to the mouse as you change it. Tick *Re-apply my settings at login* and whatever you set is remembered automatically — there is no separate save step. **Save** appears only on the Buttons tab, where edits are staged — General has nothing to save, so it shows just **Close**.
+- Two login switches, doing different jobs: *Start Nibble at login* registers the app as a login item (`SMAppService`) so the menu bar — and therefore **button remapping** — comes back after a reboot; *Re-apply my settings at login* restores DPI, report rate and lighting to the device. Ticking the second one without the first gives you your DPI back and dead remaps.
+- The **Status** rows on General report the three things every remap depends on: Input Monitoring, Accessibility, and the engine itself. Permissions are shown for whichever process hosts the engine, not for the settings window — so they stay honest when you run `nibble ui` from a terminal. `nibble doctor` prints the same checks.
+- Low-battery alerts are configurable (*Notify me below N%*): one reminder per discharge cycle, reset by plugging in, delivered by the menu bar app. The status icon turns red at the same level.
 - Report-rate and RGB writes require **host mode**; commands switch the mode flag automatically. The flag also reverts on power cycle.
 - Onboard flash (HID++ feature `0x8100`) is **read-only by design**. `onboard backup` dumps every sector to `~/.config/nibble/backups/` as `.bin` + `.json` metadata — your escape hatch is restoring factory settings via G HUB on any machine.
 - Button remaps are hosted by `nibble menubar` (the opt-in resident mode). G-series path: the spy-layer remap zeroes the button's standard HID output and Nibble synthesizes your action from the event stream (`0x8110`). Quitting the menu bar restores factory behavior immediately; a power cycle does too. Actions: `keys` (e.g. `cmd+shift+4`), `macro` (a comma-separated sequence: `cmd+c, 150ms, cmd+v` — steps are key combinations or delays in `ms`/`s`, capped at 64 steps and 30s total), `system` (`mission-control`, `play-pause`, `next-track`, `prev-track`, `volume-up`, `volume-down`, `mute`, `app:Name`, `url:<deeplink>` — e.g. `url:raycast://extensions/mooxl/deepcast/index`), `disable`.
@@ -166,6 +172,7 @@ Sources/MenuBar.swift         interactive NSStatusItem menu (opt-in resident)
 Sources/SettingsWindow.swift  native AppKit settings panel (quits on close)
 Sources/ButtonsPane.swift     Buttons tab: device-enumerated remap table
 Sources/KeyRecorder.swift     press-a-key shortcut recorder
+Sources/LoginItem.swift       login item registration (SMAppService)
 Sources/L10n.swift            --json output + machine-readable errors
 Sources/main.swift            argv dispatch
 ```

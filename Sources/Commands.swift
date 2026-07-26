@@ -193,13 +193,24 @@ func cmdDoctor() -> Int32 {
     add("config", cfg != nil, cfg == nil ? "not created" : "\(bmConfigURL.path) · \(mapCount) button mapping(s)\(profileNote)",
         fix: cfg == nil ? "nibble config init" : nil)
 
+    // 鎖檔而非 pgrep：doctor 自己也是同一個 binary，比對程序名會把自己算成選單列
+    let menubarRunning = menuBarRunning()
+
     // 改鍵引擎跑在選單列那個程序裡，狀態靠它寫的檔案回報——CLI 自己的 AX 權限不代表引擎的
     if mapCount > 0 {
         let st = EngineState.read()
-        let active = st["active"] as? Bool ?? false
-        let reason = st["reason"] as? String ?? "menu bar app has not reported yet"
+        // 狀態檔是上一次回報留下的，不會在選單列被關掉時自己更新——
+        // 少了這個 && 就會出現「引擎 ✅ 執行中、選單列 ❌ 沒在跑」這種自相矛盾的診斷
+        let active = (st["active"] as? Bool ?? false) && menubarRunning
+        let reason = menubarRunning
+            ? (st["reason"] as? String ?? "menu bar app has not reported yet")
+            : "menu bar not running — the engine died with it"
         add("remap-engine", active, active ? "running · \(st["mappings"] as? Int ?? 0) mapping(s) · \(st["path"] as? String ?? "")" : reason,
-            fix: active ? nil : (st["fix"] as? String ?? "start the menu bar app: open Nibble.app"))
+            // 選單列明明開著卻叫人「去開選單列」是先前這裡的錯字面值：
+            // 引擎失敗最常見的原因是滑鼠睡著，而它自己會退避重試
+            fix: active ? nil : (st["fix"] as? String
+                ?? (menubarRunning ? "wake the mouse — the engine retries on its own"
+                                   : "start the menu bar app: open Nibble.app")))
         if let fired = st["lastFiredButton"] as? String {
             add("last-remap-fired", nil,
                 "\(fired) → \(st["lastFiredAction"] as? String ?? "?") at \(st["lastFiredAt"] as? String ?? "?")")
@@ -210,15 +221,23 @@ func cmdDoctor() -> Int32 {
         }
     }
 
-    let menubarRunning = sh(["/usr/bin/pgrep", "-f", "nibble menubar"]) == 0
-        || sh(["/usr/bin/pgrep", "-f", "Nibble.app"]) == 0
     add("menubar", mapCount > 0 ? menubarRunning : nil,
         menubarRunning ? "running (remap engine host)" : "not running",
         fix: (mapCount > 0 && !menubarRunning) ? "nibble menubar &   (or open Nibble.app)" : nil)
 
+    // 開機自動啟動是改鍵能不能撐過重開機的關鍵，但它綁在 .app bundle 上，
+    // 所以從終端機跑 doctor 時只能報告「無法從這裡判斷」
+    add("login-startup", nil,
+        LoginItem.supported ? LoginItem.note : "not visible from the CLI — check Nibble.app > Settings > General",
+        fix: (LoginItem.supported && !LoginItem.enabled)
+            ? "nibble startup on   (or tick “Start Nibble at login” in Settings > General)" : nil)
+
     let replayInstalled = FileManager.default.fileExists(atPath: replayPlistURL.path)
     add("login-replay", nil, replayInstalled ? "installed" : "not installed",
         fix: replayInstalled ? nil : "nibble replay install")
+
+    let notifyLimit = lowBatteryThreshold(cfg)
+    add("low-battery-alert", nil, notifyLimit.map { "below \($0)%" } ?? "off")
 
     let failed = checks.filter { $0["status"] as? String == "fail" }.count
     if jsonMode {
@@ -586,6 +605,38 @@ func uiSetRGB(_ dev: HIDPPDevice, kind: String) throws -> Int {
 }
 
 /// 以目前裝置狀態＋UI 記住的 RGB 狀態寫設定檔（合併，不動改鍵表）
+/// `nibble startup [on|off]` — 開機自動啟動選單列。設定視窗有同一個開關，
+/// 但 CLI 這條路才能在沒有 GUI 的情況下驗證（而且這個專案每個功能都該有 CLI 對應）。
+func cmdStartup(_ args: [String]) -> Int32 {
+    let want = args.first?.lowercased()
+    if let want, !["on", "off", "true", "false", "enable", "disable"].contains(want) {
+        print("usage: nibble startup [on|off]")
+        return 64
+    }
+    guard LoginItem.supported else {
+        // 從 repo 或 /usr/local/bin 跑的裸 binary 沒有 bundle 可以註冊
+        let msg = "startup needs the app bundle — run `make install-app`, then "
+                + "/Applications/Nibble.app/Contents/MacOS/nibble startup on"
+        if jsonMode { emitJSON(["error": msg, "code": "not-bundled"]) } else { print(msg) }
+        return 1
+    }
+    if let want {
+        let on = ["on", "true", "enable"].contains(want)
+        do {
+            try LoginItem.set(on)
+        } catch {
+            if jsonMode { emitJSON(["error": "\(error)", "code": "login-item-failed"]) } else { print("❌ \(error)") }
+            return 2
+        }
+    }
+    if jsonMode {
+        emitJSON(["startup": LoginItem.enabled, "status": LoginItem.note, "bundle": Bundle.main.bundleURL.path])
+    } else {
+        print("startup: \(LoginItem.note)")
+    }
+    return 0
+}
+
 func uiSaveConfig(_ dev: HIDPPDevice, rgb: String?) throws {
     var cfg = loadConfig() ?? BMConfig()
     cfg.dpi = try? dev.currentDPI()

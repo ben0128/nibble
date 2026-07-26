@@ -7,6 +7,9 @@ struct BMConfig: Codable {
     var rgb: String? = nil            // "off" | "keep"
     var wheelMode: String? = nil      // "free" | "ratchet"（MX 系）
     var wheelThreshold: Int? = nil
+    // 低電量通知：兩個欄位而不是「0 = 關閉」——這個檔案是人會手改的，魔術數字讀不出意圖
+    var lowBatteryNotify: Bool? = nil    // nil = 開啟（預設行為不必寫進檔案）
+    var lowBatteryPercent: Int? = nil    // nil = defaultLowBatteryPercent
     // 舊版格式：裝置名稱 → { "G7": {...} }。新版讀進來當成 Default profile（見 activeButtonMaps）
     var buttonMaps: [String: [String: ButtonAction]]? = nil
     // 改鍵組合：profile 名稱 → 裝置名稱 → { "G7": {...} }
@@ -16,6 +19,25 @@ struct BMConfig: Codable {
 }
 
 let defaultProfileName = "Default"
+
+let defaultLowBatteryPercent = 15
+/// 上限 50：再高就不是「低電量」而是每天都在響；下限 5 是還來得及充的餘裕
+let lowBatteryRange = 5...50
+
+/// 低電量通知的門檻。回傳 nil 代表使用者關掉了通知。
+/// 設定檔可能被手改成任何數字，所以夾在合理範圍內而不是照用。
+func lowBatteryThreshold(_ cfg: BMConfig?) -> Int? {
+    if cfg?.lowBatteryNotify == false { return nil }
+    guard let p = cfg?.lowBatteryPercent else { return defaultLowBatteryPercent }
+    return min(max(p, lowBatteryRange.lowerBound), lowBatteryRange.upperBound)
+}
+
+func updateLowBatteryNotify(enabled: Bool, percent: Int) throws {
+    var cfg = loadConfig() ?? BMConfig()
+    cfg.lowBatteryNotify = enabled
+    cfg.lowBatteryPercent = min(max(percent, lowBatteryRange.lowerBound), lowBatteryRange.upperBound)
+    try saveConfig(cfg)
+}
 
 /// 目前生效的改鍵表。舊設定檔沒有 profiles 時，把 buttonMaps 當成 Default——
 /// 使用者不必手動搬家，現有映射照常運作。

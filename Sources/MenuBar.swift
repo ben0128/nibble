@@ -6,10 +6,23 @@ import UserNotifications
 
 /// 單一實例保護：重複啟動會在選單列疊出第二個圖示，兩個程序還會搶同一個 HID 裝置。
 /// 用檔案鎖而非檢查程序名——後者在 .app 與 CLI 混用時不可靠。
+let menuBarLockURL = FileManager.default.homeDirectoryForCurrentUser
+    .appendingPathComponent(".config/nibble/menubar.lock")
+
+/// 從別的程序判斷選單列還活著沒：試搶它的鎖，搶到就馬上放掉。
+/// 不用 pgrep——設定視窗是同一個 binary 跑出來的子程序，比對程序名會把自己算進去。
+func menuBarRunning() -> Bool {
+    let fd = open(menuBarLockURL.path, O_WRONLY)   // 不建檔：沒有這個檔就代表從沒跑過
+    guard fd >= 0 else { return false }
+    defer { close(fd) }
+    if flock(fd, LOCK_EX | LOCK_NB) == 0 { flock(fd, LOCK_UN); return false }
+    return errno == EWOULDBLOCK
+}
+
 private func acquireMenuBarLock() -> Bool {
-    let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/nibble")
+    let dir = menuBarLockURL.deletingLastPathComponent()
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    let fd = open(dir.appendingPathComponent("menubar.lock").path, O_CREAT | O_WRONLY, 0o644)
+    let fd = open(menuBarLockURL.path, O_CREAT | O_WRONLY, 0o644)
     guard fd >= 0 else { return true }   // 拿不到鎖檔就別擋使用者
     if flock(fd, LOCK_EX | LOCK_NB) != 0 {
         let blocked = errno == EWOULDBLOCK   // 其他 errno 代表檔案系統不支援等狀況，別擋使用者
@@ -51,6 +64,9 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastRGB: String? = lastKnownRGB()   // 協定無法回讀，改用設定檔記著的最後套用值
     private var engine: RemapEngineProtocol?
     private var lowBatteryNotified = false
+    private var lastNotifyThreshold: Int?
+    /// 圖示轉紅的門檻，跟著低電量通知的設定走
+    private var warnPercent = defaultLowBatteryPercent
     private var refreshing = false
     private var settingsProcess: Process?
     private var engineNeedsAX = false
@@ -192,7 +208,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let button = statusItem.button else { return }
         button.title = ""
         button.image = StatusIcon.mouse(percent: batteryPercent, charging: batteryCharging)
-        button.contentTintColor = (batteryPercent.map { $0 <= 15 } ?? false) && !batteryCharging ? .systemRed : nil
+        button.contentTintColor = (batteryPercent.map { $0 <= warnPercent } ?? false) && !batteryCharging ? .systemRed : nil
         button.toolTip = statusTooltip
     }
 
@@ -208,6 +224,9 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// 改鍵引擎：讀 config 的 per-device 映射，掛上 spy 事件流（G 系路徑）
     private func startEngine() {
+        // 設定檔一改就會走到這裡（watchConfig），順手同步圖示轉紅的門檻——
+        // 通知說「低於 30% 提醒我」，圖示卻等到 15% 才變紅是說不通的
+        warnPercent = lowBatteryThreshold(loadConfig()) ?? defaultLowBatteryPercent
         engine?.stop()
         engine = nil
         defer { updateRemapSummary() }
@@ -355,10 +374,14 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func reloadEngineAction() { startEngine() }
 
     /// 低電量通知：需要 .app bundle（`make app`）；裸 binary 執行時靜默略過。
-    /// 一次充放電週期只提醒一次，充電後重置。
+    /// 一次充放電週期只提醒一次，充電後重置。門檻由設定檔決定（設定視窗可調、可關）。
     private func notifyLowBatteryIfNeeded(percent: Int, charging: Bool, device: String) {
         guard Bundle.main.bundleIdentifier != nil else { return }
-        if charging || percent > 15 { lowBatteryNotified = false; return }
+        guard let limit = lowBatteryThreshold(loadConfig()) else { lowBatteryNotified = false; return }
+        // 門檻剛被調過就重置閂鎖：不然把 15 改成 30、而電量已經 25%，
+        // 這一輪放電就永遠不會提醒——使用者剛設的值卻要等下次充放電才生效
+        if limit != lastNotifyThreshold { lowBatteryNotified = false; lastNotifyThreshold = limit }
+        if charging || percent > limit { lowBatteryNotified = false; return }
         guard !lowBatteryNotified else { return }
         lowBatteryNotified = true
         let center = UNUserNotificationCenter.current()
@@ -480,13 +503,9 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func refreshAction() { refresh(); flash("🔄") }
 
-    @objc private func openAccessibility() {
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-    }
+    @objc private func openAccessibility() { openAccessibilitySettings() }
 
-    @objc private func openInputMonitoring() {
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
-    }
+    @objc private func openInputMonitoring() { openInputMonitoringSettings() }
 
     private func act(_ body: (HIDPPDevice) throws -> Void) {
         do {

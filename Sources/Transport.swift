@@ -10,6 +10,11 @@
 import Foundation
 import IOKit.hid
 
+/// 輸入監控授權，不必真的去開裝置就能問（等 openAll() 失敗才知道太晚，而且有副作用）
+func inputMonitoringGranted() -> Bool {
+    IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
+}
+
 /// 多個 transport 共用同一個 IOHIDManager：manager 必須活得比所有 device 久
 /// （被釋放會拆掉 input 管線），由最後一個 transport 的 deinit 帶著它一起關。
 public final class HIDManagerHolder {

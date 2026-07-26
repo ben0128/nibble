@@ -194,6 +194,15 @@ func performButtonAction(_ a: ButtonAction) {
 }
 
 /// 輔助使用權限檢查；promptIfNeeded 會觸發系統授權對話框
+/// 這兩個 deeplink 選單列和設定視窗都要用——URL 只留一份，免得哪天其中一邊失修
+func openInputMonitoringSettings() {
+    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
+}
+
+func openAccessibilitySettings() {
+    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+}
+
 func axTrusted(promptIfNeeded: Bool = false) -> Bool {
     if promptIfNeeded {
         let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary

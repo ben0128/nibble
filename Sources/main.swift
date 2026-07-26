@@ -32,6 +32,7 @@ case "profile":  exit(cmdProfile(subArgs))
 case "config":   exit(cmdConfig(subArgs))
 case "apply":    exit(cmdApply())
 case "replay":   exit(cmdReplay(subArgs))
+case "startup":  exit(cmdStartup(subArgs))
 case "menubar":  exit(runMenuBar())
 case "ui":       exit(runSettingsUI(initialTab: subArgs.first))
 case "version", "--version", "-v":
@@ -65,6 +66,7 @@ default:
       nibble config init|show       ~/.config/nibble.json
       nibble apply                  apply config file
       nibble replay install         auto-apply at login (one-shot launchd)
+      nibble startup [on|off]       start the menu bar at login (needs Nibble.app)
 
     ONBOARD MEMORY (read-only by design)
       nibble onboard backup         dump all sectors — escape hatch

@@ -42,6 +42,17 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     private let rateControl = NSSegmentedControl(labels: ["125", "250", "500", "1000"], trackingMode: .selectOne, target: nil, action: nil)
     private let rgbControl = NSSegmentedControl(labels: ["Off", "Cycle", "Breathing"], trackingMode: .selectOne, target: nil, action: nil)
     private let replayCheck = NSButton(checkboxWithTitle: "Re-apply my settings at login", target: nil, action: nil)
+    private let startupCheck = NSButton(checkboxWithTitle: "Start Nibble at login", target: nil, action: nil)
+    private let startupNote = NSTextField(labelWithString: "")
+    private let notifyCheck = NSButton(checkboxWithTitle: "Notify me below", target: nil, action: nil)
+    private let notifyField = NSTextField(string: "")
+    // 健康狀態列：改鍵沒反應時的答案幾乎都在這三行裡（先前只有 CLI 的 `nibble doctor` 看得到）
+    private let imValue = NSTextField(labelWithString: "checking…")
+    private let axValue = NSTextField(labelWithString: "checking…")
+    private let engineValue = NSTextField(labelWithString: "checking…")
+    private let imFix = NSButton(title: "Open Settings…", target: nil, action: nil)
+    private let axFix = NSButton(title: "Open Settings…", target: nil, action: nil)
+    private let engineFix = NSButton(title: "Start Nibble", target: nil, action: nil)
     private let statusLabel = NSTextField(labelWithString: " ")
     private let aboutButton = NSButton(title: "GitHub", target: nil, action: nil)
     private let saveButton = NSButton(title: "Save", target: nil, action: nil)
@@ -81,6 +92,32 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         dpiCustom.widthAnchor.constraint(equalToConstant: 74).isActive = true
         replayCheck.target = self
         replayCheck.action = #selector(replayToggled)
+        startupCheck.target = self
+        startupCheck.action = #selector(startupToggled)
+        startupCheck.toolTip = "Keeps the menu bar running, which is what executes your button remaps. "
+                             + "Without it, a reboot leaves the remaps dead — the login re-apply below only restores DPI, rate and lighting."
+        startupNote.font = .systemFont(ofSize: 11)
+        startupNote.textColor = .systemOrange
+        startupNote.isHidden = true
+        notifyCheck.target = self
+        notifyCheck.action = #selector(notifyToggled)
+        notifyField.target = self
+        notifyField.action = #selector(notifyFieldCommitted)
+        notifyField.alignment = .right
+        notifyField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        notifyField.placeholderString = "\(defaultLowBatteryPercent)"
+        notifyField.translatesAutoresizingMaskIntoConstraints = false
+        notifyField.widthAnchor.constraint(equalToConstant: 46).isActive = true
+        for b in [imFix, axFix, engineFix] {
+            b.bezelStyle = .rounded
+            b.controlSize = .small
+            b.font = .systemFont(ofSize: 11)
+            b.target = self
+        }
+        imFix.action = #selector(openInputMonitoringAction)
+        axFix.action = #selector(openAccessibilityAction)
+        engineFix.action = #selector(startMenuBarAction)
+        engineFix.toolTip = "Launches /Applications/Nibble.app — the menu bar hosts the remap engine."
         rateControl.target = self
         rateControl.action = #selector(rateChanged(_:))
         rgbControl.target = self
@@ -93,6 +130,17 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         dpiCustomRow.spacing = 6
         dpiCustomRow.alignment = .centerY
 
+        // 兩個「登入時」的勾選框刻意相鄰又分工明確：一個讓程式活著（改鍵才有宿主），
+        // 一個把裝置設定寫回去。先前只有後者，重開機後按鍵全死卻沒人說得出為什麼。
+        let launchRow = NSStackView(views: [
+            startupCheck,
+            nibbleHelpBadge("Button remapping only works while the Nibble menu bar is running. "
+                          + "This registers it as a login item so it comes back after a reboot."),
+            startupNote,
+        ])
+        launchRow.spacing = 8
+        launchRow.alignment = .centerY
+
         // 勾選框就是「保留我的設定」的唯一開關：勾了之後每次改動自動記錄，
         // 不再需要一顆語意跟右下角 Save 撞車的按鈕
         let startupRow = NSStackView(views: [
@@ -104,6 +152,22 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         startupRow.spacing = 8
         startupRow.alignment = .centerY
 
+        let percentLabel = NSTextField(labelWithString: "%")
+        percentLabel.textColor = .secondaryLabelColor
+        let notifyRow = NSStackView(views: [
+            notifyCheck, notifyField, percentLabel,
+            nibbleHelpBadge("Delivered by the menu bar app, so it needs that running too. "
+                          + "You get one reminder per discharge cycle — plugging in resets it. "
+                          + "The menu bar icon turns red at the same level."),
+        ])
+        notifyRow.spacing = 6
+        notifyRow.alignment = .centerY
+
+        let statusHeader = nibbleSectionRow(sectionLabel("Status"),
+            help: "The three things every remap depends on. Input Monitoring lets Nibble read the mouse; "
+                + "Accessibility lets it synthesize your keystrokes; the engine lives in the menu bar app. "
+                + "Permissions are reported for whichever process hosts the engine — `nibble doctor` prints the same checks.")
+
         let generalStack = NSStackView(views: [
             sectionLabel("DPI"), dpiControl, dpiCustomRow,
             sectionLabel("Report rate (Hz)"), rateControl,
@@ -111,12 +175,16 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
                              help: "Lighting can't be read back from the mouse — Nibble shows the last effect it applied. "
                                  + "A power cycle returns the mouse to its onboard profile."),
             rgbControl,
-            NSBox(), startupRow,
+            NSBox(), launchRow, startupRow, notifyRow,
+            NSBox(), statusHeader,
+            healthRow("Input Monitoring", imValue, imFix),
+            healthRow("Accessibility", axValue, axFix),
+            healthRow("Remap engine", engineValue, engineFix),
         ])
         generalStack.orientation = .vertical
         generalStack.alignment = .leading
         generalStack.spacing = 8
-        if let box = generalStack.views.first(where: { $0 is NSBox }) as? NSBox { box.boxType = .separator }
+        for case let box as NSBox in generalStack.views { box.boxType = .separator }
 
         let tabs = NSTabView()
         tabs.delegate = self
@@ -212,12 +280,12 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             aboutButton.centerYAnchor.constraint(equalTo: deviceLabel.centerYAnchor),
         ])
 
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 480),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 600),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
         window.title = "Nibble"
         window.contentView = root
-        window.contentMinSize = NSSize(width: 680, height: 450)
+        window.contentMinSize = NSSize(width: 680, height: 580)
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
@@ -227,10 +295,13 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         if initialTab == "buttons" { tabs.selectTabViewItem(withIdentifier: "buttons") }
         onButtonsTab = (tabs.selectedTabViewItem?.identifier as? String) == "buttons"
         syncSaveButton()
+        loadPreferences()
+        refreshHealth()
         loadState()
         buttonsPane.reload()
         headerTimer = Timer.scheduledTimer(withTimeInterval: 45, repeats: true) { [weak self] _ in
             self?.refreshHeader()
+            self?.refreshHealth()
         }
     }
 
@@ -358,7 +429,6 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
                     + "Writing the rate requires host mode; Nibble switches automatically."
             }
             showLighting()
-            replayCheck.state = FileManager.default.fileExists(atPath: replayPlistURL.path) ? .on : .off
             setStatus("Ready")
         } catch {
             deviceLabel.stringValue = "Mouse offline or asleep"
@@ -441,6 +511,147 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             try uiHostFallback(dev) { got = try dev.setReportRateHz(hz) }
             statusLabel.stringValue = got == hz ? "Report rate → \(got) Hz ✓" : "⚠️ asked \(hz), device reports \(got)"
         } catch { setStatus("❌ \(error)") }
+    }
+
+
+    /// 授權完回到這個視窗的那一刻就要看到新狀態——不然使用者會以為授權沒生效
+    func applicationDidBecomeActive(_ notification: Notification) {
+        refreshHealth()
+    }
+
+    /// 裝置無關的偏好設定。刻意不放在 loadState 裡：那邊開不到滑鼠就整段跳掉，
+    /// 於是滑鼠睡著時這些勾選框會顯示成「沒開」——明明是開著的。
+    private func loadPreferences() {
+        replayCheck.state = FileManager.default.fileExists(atPath: replayPlistURL.path) ? .on : .off
+        let cfg = loadConfig()
+        let limit = lowBatteryThreshold(cfg)
+        notifyCheck.state = limit == nil ? .off : .on
+        notifyField.stringValue = "\(limit ?? cfg?.lowBatteryPercent ?? defaultLowBatteryPercent)"
+        notifyField.isEnabled = limit != nil
+    }
+
+    private func healthRow(_ title: String, _ value: NSTextField, _ fix: NSButton) -> NSStackView {
+        let name = NSTextField(labelWithString: title)
+        name.font = .systemFont(ofSize: 11, weight: .medium)
+        name.textColor = .secondaryLabelColor
+        name.translatesAutoresizingMaskIntoConstraints = false
+        name.widthAnchor.constraint(equalToConstant: 116).isActive = true   // 固定欄寬讓三行的值對齊
+        value.font = .systemFont(ofSize: 11)
+        value.lineBreakMode = .byTruncatingTail
+        value.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let row = NSStackView(views: [name, value, fix])
+        row.spacing = 8
+        row.alignment = .centerY
+        return row
+    }
+
+    /// ok = nil 代表「不是問題，只是還沒設定」——用灰點而不是紅叉，免得看起來像壞了
+    private func setHealth(_ field: NSTextField, ok: Bool?, _ text: String) {
+        switch ok {
+        case true:  field.stringValue = "✓  " + text; field.textColor = .secondaryLabelColor
+        case false: field.stringValue = "✗  " + text; field.textColor = .systemRed
+        case nil:   field.stringValue = "–  " + text; field.textColor = .tertiaryLabelColor
+        }
+    }
+
+    private func refreshHealth() {
+        let im = inputMonitoringGranted()
+        setHealth(imValue, ok: im, im ? "granted" : "not granted — Nibble can't read the mouse")
+        imFix.isHidden = im
+
+        let st = EngineState.read()
+        // 引擎跑在選單列那個程序裡，所以要看它回報的授權狀態，不是這個視窗自己的
+        // （從終端機跑 `nibble ui` 時，這個程序的授權是終端機的，跟 Nibble.app 無關）
+        let ax = (st["axTrusted"] as? Bool) ?? axTrusted()
+        setHealth(axValue, ok: ax, ax ? "granted" : "not granted — remapped buttons stay silent")
+        axFix.isHidden = ax
+
+        let mapped = activeButtonMaps(loadConfig()).values.reduce(0) { $0 + $1.count }
+        if !menuBarRunning() {
+            setHealth(engineValue, ok: mapped > 0 ? false : nil,
+                      mapped > 0 ? "menu bar not running — your \(mapped) remap\(mapped == 1 ? "" : "s") are off"
+                                 : "menu bar not running")
+            engineFix.isHidden = false
+        } else if st["active"] as? Bool == true {
+            let n = st["mappings"] as? Int ?? 0
+            setHealth(engineValue, ok: true, "running · \(n) mapping\(n == 1 ? "" : "s")")
+            engineFix.isHidden = true
+        } else {
+            let reason = st["reason"] as? String ?? "menu bar has not reported yet"
+            // 「沒設定映射」不是故障，只是還沒用到這個功能
+            setHealth(engineValue, ok: reason.contains("no mappings") ? nil : false, reason)
+            engineFix.isHidden = true
+        }
+
+        startupCheck.isEnabled = LoginItem.supported
+        startupCheck.state = LoginItem.enabled ? .on : .off
+        let note = LoginItem.note
+        startupNote.isHidden = (note == "on" || note == "off")
+        startupNote.stringValue = startupNote.isHidden ? "" : note
+    }
+
+    @objc private func openInputMonitoringAction() { openInputMonitoringSettings() }
+
+    @objc private func openAccessibilityAction() { openAccessibilitySettings() }
+
+    @objc private func startMenuBarAction() {
+        let url = URL(fileURLWithPath: "/Applications/Nibble.app")
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            setStatus("⚠️ /Applications/Nibble.app not found — run `make install-app`", sticky: true)
+            return
+        }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, err in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if let err {
+                    self.setStatus("❌ \(err.localizedDescription)", sticky: true)
+                } else {
+                    self.setStatus("Menu bar starting…")
+                    self.scheduleHealthRecheck()
+                }
+            }
+        }
+    }
+
+    /// 選單列剛啟動時還沒寫過狀態檔，立刻重讀會看到舊值
+    private func scheduleHealthRecheck() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.refreshHealth() }
+    }
+
+    @objc private func startupToggled() {
+        let on = startupCheck.state == .on
+        do {
+            try LoginItem.set(on)
+            setStatus(on ? "Nibble will start at login ✓" : "Login item removed")
+        } catch {
+            setStatus("❌ \(error)", sticky: true)
+        }
+        refreshHealth()   // 系統可能拒絕或需要核可，勾選框要反映真實狀態而不是使用者的點擊
+    }
+
+    @objc private func notifyToggled() {
+        applyNotifySettings()
+    }
+
+    @objc private func notifyFieldCommitted() {
+        applyNotifySettings()
+    }
+
+    private func applyNotifySettings() {
+        let on = notifyCheck.state == .on
+        let typed = Int(notifyField.stringValue.trimmingCharacters(in: .whitespaces))
+        if on, let v = typed, !lowBatteryRange.contains(v) {
+            setStatus("⚠️ threshold must be between \(lowBatteryRange.lowerBound) and \(lowBatteryRange.upperBound)%")
+        }
+        let percent = typed ?? defaultLowBatteryPercent
+        do {
+            try updateLowBatteryNotify(enabled: on, percent: percent)
+            loadPreferences()   // 夾過範圍後把真正生效的值寫回欄位
+            if on { setStatus("Low-battery alert at \(notifyField.stringValue)% ✓") }
+            else { setStatus("Low-battery alerts off") }
+        } catch {
+            setStatus("❌ \(error)")
+        }
     }
 
     @objc private func rgbChanged(_ sender: NSSegmentedControl) {

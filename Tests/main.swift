@@ -207,6 +207,39 @@ do {
     expect(cfg.buttonMaps == nil, "missing buttonMaps is nil, not an error")
 }
 
+// MARK: - 低電量通知門檻（設定檔是人會手改的，所以不信任裡面的數字）
+
+section("low-battery threshold")
+do {
+    expectEqual(lowBatteryThreshold(nil), defaultLowBatteryPercent, "no config → default threshold")
+    expectEqual(lowBatteryThreshold(BMConfig()), defaultLowBatteryPercent, "unset fields → default threshold")
+
+    var cfg = BMConfig()
+    cfg.lowBatteryPercent = 30
+    expectEqual(lowBatteryThreshold(cfg), 30, "configured threshold is used")
+
+    // 關掉通知後，門檻值留在檔案裡也不能讓它復活
+    cfg.lowBatteryNotify = false
+    expect(lowBatteryThreshold(cfg) == nil, "notify=false disables alerts regardless of the percent")
+
+    cfg.lowBatteryNotify = true
+    cfg.lowBatteryPercent = 99
+    expectEqual(lowBatteryThreshold(cfg), lowBatteryRange.upperBound, "an out-of-range high value clamps down")
+    cfg.lowBatteryPercent = 0
+    expectEqual(lowBatteryThreshold(cfg), lowBatteryRange.lowerBound, "zero clamps up instead of silencing alerts")
+    cfg.lowBatteryPercent = -5
+    expectEqual(lowBatteryThreshold(cfg), lowBatteryRange.lowerBound, "a negative value clamps up")
+
+    // 新欄位不能把既有內容擠掉——這是舊版覆寫式存檔踩過的坑
+    var withMaps = BMConfig()
+    withMaps.buttonProfiles = ["Default": ["G502": ["G7": ButtonAction(type: "keys", keys: "cmd+c", action: nil)]]]
+    withMaps.lowBatteryNotify = true
+    withMaps.lowBatteryPercent = 25
+    let round = try JSONDecoder().decode(BMConfig.self, from: try JSONEncoder().encode(withMaps))
+    expectEqual(round.lowBatteryPercent, 25, "threshold survives a round trip")
+    expectEqual(round.buttonProfiles?["Default"]?["G502"]?.count, 1, "mappings survive alongside the new keys")
+}
+
 // MARK: - 改鍵表的鍵名解析（G1/G2 必須永遠拒絕）
 
 section("button map key parsing")
