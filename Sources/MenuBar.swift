@@ -246,6 +246,18 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             try eng.start()
             engine = eng   // engine 持有 dev+transport → 事件流常駐
+            // 裝置消失（藍牙斷線、拔接收器）沒有 0x41 通知可等：拆掉引擎讓重試退避接手，
+            // 否則引擎看似在跑、實際永遠收不到事件（弱引用：引擎換代後舊 callback 自動失效）
+            tr.onRemoval = { [weak self, weak eng] in
+                guard let self, let eng, self.engine === eng else { return }
+                self.engine = nil
+                eng.stop()
+                self.engineItem.title = "Remapping: device disconnected — will retry"
+                EngineState.writeStatus(["active": false, "reason": "device disconnected — waiting for reconnect",
+                                         "axTrusted": axTrusted()])
+                self.updateRemapSummary()
+                self.scheduleEngineRetry()
+            }
             engineRetryDelay = 4
             engineItem.title = "Remapping: ✓ \(eng.mappingCount) active"
             EngineState.writeStatus(["active": true, "reason": "running", "mappings": eng.mappingCount,

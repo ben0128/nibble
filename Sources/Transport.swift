@@ -33,6 +33,9 @@ public final class ReceiverTransport: HIDPPTransport {
     public let productID: Int
     /// 事件旁聽：每一則進來的 report（含裝置主動通知）都會呼叫——改鍵引擎靠這個吃 spy 事件
     public var onReport: (([UInt8]) -> Void)?
+    /// 裝置消失（藍牙斷線、接收器拔除）——直連路徑沒有接收器的 0x41 通知可用，
+    /// 引擎宿主靠這個拆掉引擎，否則引擎看似在跑、實際永遠收不到事件
+    public var onRemoval: (() -> Void)?
     let debug = ProcessInfo.processInfo.environment["NIBBLE_DEBUG"] != nil
 
     /// 開啟所有羅技 HID++ collection——接收器與藍牙直連裝置都在內，接收器排前面
@@ -52,40 +55,50 @@ public final class ReceiverTransport: HIDPPTransport {
         let holder = HIDManagerHolder(mgr)
         let objs = (IOHIDManagerCopyDevices(mgr) as NSSet?)?.allObjects ?? []
         var out: [ReceiverTransport] = []
+        var firstError: Error?
         for o in objs {
-            if let t = try? ReceiverTransport(managerRef: holder, device: o as! IOHIDDevice) { out.append(t) }
+            let device = o as! IOHIDDevice
+            guard isHIDPPCollection(device) else { continue }   // 非 HID++ collection 不算錯
+            do { out.append(try ReceiverTransport(managerRef: holder, device: device)) }
+            catch { if firstError == nil { firstError = error } }
         }
         guard !out.isEmpty else {
-            throw HIDPPError.transport("no Logitech device found — plug in the USB receiver or connect the mouse over Bluetooth")
+            // 有 HID++ collection 但全開失敗（多半是 Input Monitoring）要報真正原因，
+            // 別誤導使用者去插接收器——doctor 的權限診斷也靠這則訊息辨識
+            throw firstError ?? HIDPPError.transport("no Logitech device found — plug in the USB receiver or connect the mouse over Bluetooth")
         }
         out.sort { !$0.isDirect && $1.isDirect }   // 接收器優先：既有（G502）行為不變
         return out
     }
 
-    public static func openFirst() throws -> ReceiverTransport {
-        try openAll()[0]
+    /// 0xFF43 頁上只有 0x0202（BLE 直連）與 0x0602（有線 G 鍵盤）是 HID++，其他略過
+    public static func isHIDPPCollection(_ device: IOHIDDevice) -> Bool {
+        let page = (IOHIDDeviceGetProperty(device, kIOHIDPrimaryUsagePageKey as CFString) as? Int) ?? 0
+        let usage = (IOHIDDeviceGetProperty(device, kIOHIDPrimaryUsageKey as CFString) as? Int) ?? 0
+        return page == 0xFF00 || (page == 0xFF43 && (usage == 0x0202 || usage == 0x0602))
     }
 
     public init(managerRef: HIDManagerHolder, device: IOHIDDevice) throws {
-        let page = (IOHIDDeviceGetProperty(device, kIOHIDPrimaryUsagePageKey as CFString) as? Int) ?? 0
-        let usage = (IOHIDDeviceGetProperty(device, kIOHIDPrimaryUsageKey as CFString) as? Int) ?? 0
-        // 0xFF43 頁上只有 0x0202（BLE 直連）與 0x0602（有線 G 鍵盤）是 HID++，其他略過
-        guard page == 0xFF00 || (page == 0xFF43 && (usage == 0x0202 || usage == 0x0602)) else {
+        guard Self.isHIDPPCollection(device) else {
             throw HIDPPError.transport("not a HID++ collection")
         }
+        let page = (IOHIDDeviceGetProperty(device, kIOHIDPrimaryUsagePageKey as CFString) as? Int) ?? 0
+        let usage = (IOHIDDeviceGetProperty(device, kIOHIDPrimaryUsageKey as CFString) as? Int) ?? 0
         self.managerRef = managerRef
         self.device = device
         self.transportKind = (IOHIDDeviceGetProperty(device, kIOHIDTransportKey as CFString) as? String) ?? "?"
         self.isDirect = page == 0xFF43 || transportKind.localizedCaseInsensitiveCompare("Bluetooth") == .orderedSame
         self.longOnly = (page == 0xFF43 && usage == 0x0202)
         self.productID = (IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? Int) ?? 0
-        self.inBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: 64)
         let od = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
         guard od == kIOReturnSuccess else {
             throw HIDPPError.transport(String(format: "IOHIDDeviceOpen failed 0x%08X (Input Monitoring permission?)", UInt32(bitPattern: od)))
         }
+        // init 拋錯時 Swift 不會呼叫 deinit——buffer 要等所有會失敗的步驟過了才配置
+        self.inBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: 64)
         let ctx = Unmanaged.passUnretained(self).toOpaque()
         IOHIDDeviceRegisterInputReportCallback(device, inBuf, 64, ReceiverTransport.reportCB, ctx)
+        IOHIDDeviceRegisterRemovalCallback(device, ReceiverTransport.removalCB, ctx)
         IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
     }
 
@@ -95,6 +108,11 @@ public final class ReceiverTransport: HIDPPTransport {
         IOHIDDeviceUnscheduleFromRunLoop(device, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
         IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
         inBuf.deallocate()
+    }
+
+    private static let removalCB: IOHIDCallback = { ctx, _, _ in
+        guard let ctx = ctx else { return }
+        Unmanaged<ReceiverTransport>.fromOpaque(ctx).takeUnretainedValue().onRemoval?()
     }
 
     private static let reportCB: IOHIDReportCallback = { ctx, _, _, _, reportID, ptr, len in

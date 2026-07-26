@@ -14,6 +14,12 @@ func discover(_ tr: ReceiverTransport, maxIndex: UInt8 = 6)
         let d = HIDPPDevice(transport: tr, index: i)
         if let v = try? d.ping(timeout: 0.6) { out.append((i, d, v)) }
     }
+    // USB 上的 0xFF00 不一定是接收器——有線滑鼠（如 G502 插充電線）也在這頁，
+    // 但它只回應直連索引 0xFF。1–6 都沒人時補問一次；真接收器會秒回 1.0 錯誤，不多花時間。
+    if out.isEmpty {
+        let d = HIDPPDevice(transport: tr, index: 0xFF)
+        if let v = try? d.ping(timeout: 0.6) { out.append((0xFF, d, v)) }
+    }
     return out
 }
 
@@ -78,7 +84,9 @@ func cmdStatus() -> Int32 {
         print(rule)
         let linkDesc = tr.isDirect
             ? "bluetooth-direct 046D:\(String(format: "%04X", tr.productID))\(tr.longOnly ? " · BLE long-only" : "")"
-            : "receiver 046D:\(String(format: "%04X", tr.productID)) · device #\(hit.idx)"
+            : hit.idx == 0xFF
+                ? "wired-usb 046D:\(String(format: "%04X", tr.productID))"
+                : "receiver 046D:\(String(format: "%04X", tr.productID)) · device #\(hit.idx)"
         print(" link      HID++ \(hit.ver.major).\(hit.ver.minor) · \(linkDesc)")
         if let b = try? dev.battery() {
             let volt = b.millivolts.map { String(format: "%.2fV  ", Double($0) / 1000) } ?? ""
@@ -230,15 +238,15 @@ func cmdDoctor() -> Int32 {
     return failed == 0 ? 0 : 1
 }
 
-/// 共用樣板：開接收器 → 找第一個醒著的裝置 → 執行
+/// 共用樣板：走遍所有 transport（接收器優先）→ 第一個醒著的裝置 → 執行
+/// 一定要走遍：插著閒置 dongle 時第一個 transport 永遠是接收器，藍牙滑鼠會被擋住
 func withDevice(_ body: (HIDPPDevice, ReceiverTransport) throws -> Int32) -> Int32 {
     do {
-        let tr = try ReceiverTransport.openFirst()
-        guard let hit = discover(tr).first else {
-            print("Receiver present but no awake device — move the mouse and retry")
+        guard let hit = try discoverEverything().first else {
+            print("transport present but no awake device — move the mouse and retry")
             return 1
         }
-        return try body(hit.dev, tr)
+        return try body(hit.dev, hit.tr)
     } catch {
         print("❌ \(error)")
         return 2
@@ -629,11 +637,13 @@ func sh(_ args: [String]) -> Int32 {
 func cmdDump() -> Int32 {
     let t0 = Date()
     do {
-        let tr = try ReceiverTransport.openFirst()
-        let devs = discover(tr)
-        guard let hit = devs.first else { print("Receiver present but no awake device"); return 1 }
+        guard let hit = try discoverEverything().first else {
+            print("transport present but no awake device — move the mouse and retry")
+            return 1
+        }
         let name = (try? hit.dev.name()) ?? "Unknown"
-        print("\(name) · HID++ \(hit.ver.major).\(hit.ver.minor) · device #\(hit.idx)\n")
+        let link = hit.tr.isDirect ? "bluetooth" : "device #\(hit.idx)"
+        print("\(name) · HID++ \(hit.ver.major).\(hit.ver.minor) · \(link)\n")
         print(" idx  feature  flags  name")
         print(" ───  ───────  ─────  ─────────────────────")
         let list = try hit.dev.featureList()

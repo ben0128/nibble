@@ -9,8 +9,8 @@ Lightweight, zero-dependency Logitech mouse control for macOS. Single 530 KB bin
 ## Requirements
 
 - macOS, Swift toolchain (`xcode-select --install`)
-- Logitech mouse on a USB receiver (Lightspeed/Unifying). Bluetooth-direct: not yet supported.
-- Tested: G502 LIGHTSPEED via receiver `046D:C539`, HID++ 4.2
+- Logitech mouse on a USB receiver (Lightspeed/Unifying), or paired directly over Bluetooth (MX-series and other BLE HID++ mice)
+- Tested: G502 LIGHTSPEED via receiver `046D:C539`, HID++ 4.2. The Bluetooth-direct path is implemented per the HID++ spec but not yet verified on hardware.
 
 ## Install
 
@@ -108,7 +108,7 @@ Mappings are stored per device name under `buttonMaps` and executed by the menu 
 | `0xE00002E2` on open | Input Monitoring not granted → grant to terminal app, re-run |
 | "no awake device" | Mouse asleep → move it, re-run |
 | HID++ error `0x02` on write | Onboard mode rejects it → handled by automatic host-mode fallback |
-| Receiver not found | Requires USB device with vendor `0x046D` + HID usage page `0xFF00` |
+| No Logitech device found | Needs vendor `0x046D` with HID usage page `0xFF00` (receiver) or `0xFF43` (Bluetooth-direct) |
 | Writes send but no replies ever arrive | If hacking on the code: IOHIDManager must outlive the device object |
 
 ## Development

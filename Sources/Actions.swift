@@ -3,9 +3,9 @@
 import AppKit
 
 struct ButtonAction: Codable {
-    var type: String       // "keys" | "system" | "disable"
-    var keys: String?      // 例 "cmd+shift+4"、"f13"、"ctrl+left"
-    var action: String?    // SystemAction rawValue 或 "app:AppName"
+    var type: String       // "keys" | "system" | "macro" | "disable"
+    var keys: String?      // keys: "cmd+shift+4"；macro: "cmd+c, 150ms, cmd+v"
+    var action: String?    // SystemAction rawValue、"app:AppName" 或 "url:deeplink"
 }
 
 enum SystemAction: String, CaseIterable {
@@ -61,9 +61,63 @@ private let modifierKeys: [(CGEventFlags, CGKeyCode)] = [
 /// 完整模擬一次組合鍵：修飾鍵先按下 → 主鍵 → 修飾鍵放開。
 /// 只在主鍵事件掛 flags 對多數 App 有效，但註冊全域熱鍵的 App（Raycast、Alfred…）
 /// 常常要看到修飾鍵本身的事件才會觸發。
+// MARK: 巨集：一鍵 → 按鍵序列（含延遲）
+
+enum MacroStep {
+    case key(CGEventFlags, CGKeyCode)
+    case delay(UInt32)   // microseconds
+}
+
+/// "cmd+c, 150ms, cmd+v" → 步驟序列。逗號分隔；"150ms"/"1.5s" 是延遲，其餘走組合鍵解析。
+/// 上限 64 步、總延遲 30 秒——防止設定檔打錯把輸入卡死半分鐘。
+func parseMacro(_ seq: String) -> [MacroStep]? {
+    var steps: [MacroStep] = []
+    var totalDelay: UInt64 = 0
+    for raw in seq.split(separator: ",") {
+        let tok = raw.trimmingCharacters(in: .whitespaces).lowercased()
+        if tok.isEmpty { continue }
+        if tok.hasSuffix("ms"), let v = UInt32(tok.dropLast(2)) {
+            steps.append(.delay(v * 1_000)); totalDelay += UInt64(v) * 1_000
+        } else if tok.hasSuffix("s"), let v = Double(tok.dropLast(1)), v >= 0 {
+            let us = UInt32(min(v, 30) * 1_000_000)
+            steps.append(.delay(us)); totalDelay += UInt64(us)
+        } else if let (f, k) = parseCombo(tok) {
+            steps.append(.key(f, k))
+        } else {
+            return nil
+        }
+    }
+    guard !steps.isEmpty, steps.count <= 64, totalDelay <= 30_000_000 else { return nil }
+    return steps
+}
+
+/// 序列播放走自己的佇列：引擎在輸入回呼裡觸發巨集，不能讓 usleep 卡住事件流。
+/// 佇列是序列的——連按兩次就排隊照順序播，不會交錯。
+private let macroQueue = DispatchQueue(label: "com.ben0128.nibble.macro")
+
+func playMacro(_ seq: String) {
+    guard let steps = parseMacro(seq) else { return }
+    macroQueue.async {
+        for step in steps {
+            switch step {
+            case .delay(let us):
+                usleep(us)
+            case .key(let flags, let key):
+                postKeys(flags: flags, key: key)
+                usleep(25_000)   // 連續按鍵間的基本間隔，多數 App 吃不下零間隔的連發
+            }
+        }
+    }
+}
+
 @discardableResult
 func postKeystroke(_ combo: String) -> Bool {
     guard let (flags, key) = parseCombo(combo) else { return false }
+    postKeys(flags: flags, key: key)
+    return true
+}
+
+func postKeys(flags: CGEventFlags, key: CGKeyCode) {
     let src = CGEventSource(stateID: .hidSystemState)
     var held: CGEventFlags = []
 
@@ -74,12 +128,13 @@ func postKeystroke(_ combo: String) -> Bool {
             e.post(tap: .cghidEventTap)
         }
     }
-    guard let down = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: true),
-          let up = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: false) else { return false }
-    down.flags = flags
-    up.flags = flags
-    down.post(tap: .cghidEventTap)
-    up.post(tap: .cghidEventTap)
+    if let down = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: true),
+       let up = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: false) {
+        down.flags = flags
+        up.flags = flags
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
+    }
 
     for (flag, code) in modifierKeys.reversed() where flags.contains(flag) {
         held.remove(flag)
@@ -88,7 +143,6 @@ func postKeystroke(_ combo: String) -> Bool {
             e.post(tap: .cghidEventTap)
         }
     }
-    return true
 }
 
 /// 媒體鍵走 NX systemDefined 事件（CGEvent 沒有這一層）
@@ -132,6 +186,7 @@ func performSystem(_ raw: String) -> Bool {
 func performButtonAction(_ a: ButtonAction) {
     switch a.type {
     case "keys": if let k = a.keys { postKeystroke(k) }
+    case "macro": if let k = a.keys { playMacro(k) }
     case "system": if let s = a.action { performSystem(s) }
     default: break   // "disable"：吞掉事件
     }
