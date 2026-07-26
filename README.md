@@ -62,6 +62,7 @@ If remaps do nothing, run `nibble doctor` — it reports whether the engine is r
 | `nibble profile [list\|use\|new\|copy\|rename\|delete]` | Switch between sets of button mappings |
 | `nibble menubar` | Interactive menu bar: battery + DPI/rate/RGB controls; hosts the remap engine (~15 MB, opt-in) |
 | `Nibble.app` | Same as `nibble menubar` but launched from Finder; the bundle also enables low-battery notifications |
+| `nibble version` | Print the version (`--json` for `{"version": "..."}`) |
 | `nibble ui` | Native settings window (General + Buttons tabs); quits when closed |
 
 Debug: `NIBBLE_DEBUG=1 nibble <cmd>` prints raw HID++ packets.
