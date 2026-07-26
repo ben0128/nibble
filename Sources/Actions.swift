@@ -58,9 +58,6 @@ private let modifierKeys: [(CGEventFlags, CGKeyCode)] = [
     (.maskControl, 59), (.maskAlternate, 58), (.maskShift, 56), (.maskCommand, 55),
 ]
 
-/// 完整模擬一次組合鍵：修飾鍵先按下 → 主鍵 → 修飾鍵放開。
-/// 只在主鍵事件掛 flags 對多數 App 有效，但註冊全域熱鍵的 App（Raycast、Alfred…）
-/// 常常要看到修飾鍵本身的事件才會觸發。
 // MARK: 巨集：一鍵 → 按鍵序列（含延遲）
 
 enum MacroStep {
@@ -118,6 +115,9 @@ func postKeystroke(_ combo: String) -> Bool {
     return true
 }
 
+/// 完整模擬一次組合鍵：修飾鍵先按下 → 主鍵 → 修飾鍵放開。
+/// 只在主鍵事件掛 flags 對多數 App 有效，但註冊全域熱鍵的 App（Raycast、Alfred…）
+/// 常常要看到修飾鍵本身的事件才會觸發。
 func postKeys(flags: CGEventFlags, key: CGKeyCode) {
     let src = CGEventSource(stateID: .hidSystemState)
     var held: CGEventFlags = []
@@ -193,7 +193,6 @@ func performButtonAction(_ a: ButtonAction) {
     }
 }
 
-/// 輔助使用權限檢查；promptIfNeeded 會觸發系統授權對話框
 /// 這兩個 deeplink 選單列和設定視窗都要用——URL 只留一份，免得哪天其中一邊失修
 func openInputMonitoringSettings() {
     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
@@ -203,6 +202,7 @@ func openAccessibilitySettings() {
     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
 }
 
+/// 輔助使用權限檢查；promptIfNeeded 會觸發系統授權對話框
 func axTrusted(promptIfNeeded: Bool = false) -> Bool {
     if promptIfNeeded {
         let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary

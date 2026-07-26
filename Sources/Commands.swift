@@ -227,9 +227,13 @@ func cmdDoctor() -> Int32 {
 
     // 開機自動啟動是改鍵能不能撐過重開機的關鍵，但它綁在 .app bundle 上，
     // 所以從終端機跑 doctor 時只能報告「無法從這裡判斷」
-    add("login-startup", nil,
+    // 被系統擋住是真的壞了，該讓 `doctor --json` 的 failed 數字反映出來；
+    // 「使用者還沒打開」則不是故障
+    add("login-startup", LoginItem.needsApproval ? false : nil,
         LoginItem.supported ? LoginItem.note : "not visible from the CLI — check Nibble.app > Settings > General",
-        fix: (LoginItem.supported && !LoginItem.enabled)
+        // 被系統設定擋住時，重新註冊沒有用——那句 fix 會把人帶去錯的地方
+        fix: LoginItem.needsApproval ? "System Settings > General > Login Items > enable Nibble"
+           : (LoginItem.supported && !LoginItem.enabled)
             ? "nibble startup on   (or tick “Start Nibble at login” in Settings > General)" : nil)
 
     let replayInstalled = FileManager.default.fileExists(atPath: replayPlistURL.path)
@@ -466,9 +470,11 @@ func cmdConfig(_ args: [String]) -> Int32 {
     switch args.first ?? "show" {
     case "init":
         return withDevice { dev, _ in
-            var cfg = loadConfig() ?? BMConfig()   // 合併：不蓋掉既有的改鍵表
-            cfg.dpi = try? dev.currentDPI()
-            cfg.reportRateHz = try? dev.reportRateHz()
+            var cfg = try loadConfigForWrite()   // 合併：不蓋掉既有的改鍵表
+            // `try?` 直接指派會把讀不到寫成 nil，而 nil 編碼出來就是「這個鍵不見了」——
+            // 滑鼠一時沒回應，就等於刪掉使用者原本存好的值
+            if let d = try? dev.currentDPI() { cfg.dpi = d }
+            if let hz = try? dev.reportRateHz() { cfg.reportRateHz = hz }
             if cfg.rgb == nil { cfg.rgb = "keep" }
             try saveConfig(cfg)
             print("✅ updated \(bmConfigURL.path) from current device state (rgb defaults to keep; set \"off\" to save power)")
@@ -610,7 +616,7 @@ func uiSetRGB(_ dev: HIDPPDevice, kind: String) throws -> Int {
 func cmdStartup(_ args: [String]) -> Int32 {
     let want = args.first?.lowercased()
     if let want, !["on", "off", "true", "false", "enable", "disable"].contains(want) {
-        print("usage: nibble startup [on|off]")
+        print("usage: nibble startup [on|off]   (also accepts true/false, enable/disable)")
         return 64
     }
     guard LoginItem.supported else {
@@ -638,9 +644,12 @@ func cmdStartup(_ args: [String]) -> Int32 {
 }
 
 func uiSaveConfig(_ dev: HIDPPDevice, rgb: String?) throws {
-    var cfg = loadConfig() ?? BMConfig()
-    cfg.dpi = try? dev.currentDPI()
-    cfg.reportRateHz = try? dev.reportRateHz()
+    var cfg = try loadConfigForWrite()
+    // 讀不到就保留既有值，不要覆蓋成「沒有」。設定視窗的自動記錄每 1.5 秒可能就跑一次，
+    // 而選單列的引擎同時握著同一個裝置——搶不到的時候本來只是這一次沒更新，
+    // 用 `try?` 直接指派卻會把使用者存好的 DPI 刪掉。
+    if let d = try? dev.currentDPI() { cfg.dpi = d }
+    if let hz = try? dev.reportRateHz() { cfg.reportRateHz = hz }
     cfg.rgb = rgb ?? cfg.rgb ?? "keep"   // 具名燈效也要存得下，不是只有 off
     try saveConfig(cfg)
 }

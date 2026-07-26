@@ -229,6 +229,10 @@ do {
     expectEqual(lowBatteryThreshold(cfg), lowBatteryRange.lowerBound, "zero clamps up instead of silencing alerts")
     cfg.lowBatteryPercent = -5
     expectEqual(lowBatteryThreshold(cfg), lowBatteryRange.lowerBound, "a negative value clamps up")
+    cfg.lowBatteryPercent = lowBatteryRange.lowerBound
+    expectEqual(lowBatteryThreshold(cfg), lowBatteryRange.lowerBound, "the lower bound itself is accepted")
+    cfg.lowBatteryPercent = lowBatteryRange.upperBound
+    expectEqual(lowBatteryThreshold(cfg), lowBatteryRange.upperBound, "the upper bound itself is accepted")
 
     // 新欄位不能把既有內容擠掉——這是舊版覆寫式存檔踩過的坑
     var withMaps = BMConfig()
@@ -238,6 +242,86 @@ do {
     let round = try JSONDecoder().decode(BMConfig.self, from: try JSONEncoder().encode(withMaps))
     expectEqual(round.lowBatteryPercent, 25, "threshold survives a round trip")
     expectEqual(round.buttonProfiles?["Default"]?["G502"]?.count, 1, "mappings survive alongside the new keys")
+}
+
+// MARK: - 低電量閂鎖：一次充放電只響一次，但改門檻／充電／開關都要重新武裝
+
+section("low-battery latch")
+do {
+    var l = LowBatteryLatch()
+    expect(l.shouldFire(percent: 10, charging: false, limit: 15), "fires below the threshold")
+    expect(!l.shouldFire(percent: 9, charging: false, limit: 15), "only once per discharge cycle")
+    _ = l.shouldFire(percent: 80, charging: true, limit: 15)
+    expect(l.shouldFire(percent: 10, charging: false, limit: 15), "charging re-arms it")
+}
+
+do {
+    // 這是「調高門檻要當下生效」的回歸測試：15 → 30 而電量已經 25%
+    var l = LowBatteryLatch()
+    expect(l.shouldFire(percent: 10, charging: false, limit: 15), "fires at the old threshold")
+    expect(l.shouldFire(percent: 25, charging: false, limit: 30), "a raised threshold fires this cycle, not the next")
+    expect(!l.shouldFire(percent: 24, charging: false, limit: 30), "then it goes quiet again")
+}
+
+do {
+    var l = LowBatteryLatch()
+    expect(l.shouldFire(percent: 10, charging: false, limit: 15), "fires once")
+    expect(!l.shouldFire(percent: 10, charging: false, limit: nil), "disabled never fires")
+    expect(l.shouldFire(percent: 10, charging: false, limit: 15), "turning alerts off and on re-arms")
+    expect(!l.shouldFire(percent: 15, charging: false, limit: 15), "same cycle, already fired — still quiet")
+}
+
+do {
+    var l = LowBatteryLatch()
+    expect(l.shouldFire(percent: 15, charging: false, limit: 15), "the boundary itself fires")
+    expect(!l.shouldFire(percent: 16, charging: false, limit: 15), "one above stays quiet")
+}
+
+// MARK: - 設定檔寫入：絕不能弄丟不相關的鍵（這個專案最嚴重的失敗模式）
+
+section("config write paths")
+do {
+    let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("nibble-write-test-\(getpid()).json")
+    let realConfig = bmConfigURL
+    bmConfigURL = tmp                       // 絕不碰使用者真正的設定檔
+    defer {
+        bmConfigURL = realConfig
+        try? FileManager.default.removeItem(at: tmp)
+    }
+
+    var cfg = BMConfig()
+    cfg.dpi = 1600
+    cfg.buttonProfiles = ["Gaming": ["G502": ["G7": ButtonAction(type: "keys", keys: "cmd+c", action: nil)]]]
+    cfg.activeProfile = "Gaming"
+    try saveConfig(cfg)
+
+    try updateLowBatteryNotify(enabled: true, percent: 25)
+    let merged = loadConfig()
+    expectEqual(merged?.buttonProfiles?["Gaming"]?["G502"]?.count, 1, "a notify write keeps the button mappings")
+    expectEqual(merged?.activeProfile, "Gaming", "a notify write keeps the active profile")
+    expectEqual(merged?.dpi, 1600, "a notify write keeps the device settings")
+    expectEqual(merged?.lowBatteryPercent, 25, "…and stores the new threshold")
+
+    // 手改壞掉的設定檔：寧可報錯，也不能拿一份空的覆蓋過去
+    let broken = #"{"lowBatteryPercent": 20.5, "buttonProfiles": {"Gaming": {}}}"#
+    try Data(broken.utf8).write(to: tmp)
+    var threw = false
+    do { try updateLowBatteryNotify(enabled: true, percent: 30) } catch { threw = true }
+    expect(threw, "a config that cannot be decoded makes the write fail loudly")
+    expectEqual(try String(contentsOf: tmp, encoding: .utf8), broken, "the undecodable file is left byte-for-byte intact")
+
+    // profile 操作走同一條保護
+    threw = false
+    do { try createProfile("Work") } catch { threw = true }
+    expect(threw, "profile writes refuse an undecodable config too")
+    expectEqual(try String(contentsOf: tmp, encoding: .utf8), broken, "…and still don't touch it")
+
+    // 檔案根本不存在時，寫入要正常成功——保護不能變成「第一次也寫不了」
+    try FileManager.default.removeItem(at: tmp)
+    try updateLowBatteryNotify(enabled: false, percent: 20)
+    expect(loadConfig()?.lowBatteryNotify == false, "a missing config is created rather than treated as corrupt")
+    expect(lowBatteryThreshold(loadConfig()) == nil, "…and the stored disable takes effect")
 }
 
 // MARK: - 改鍵表的鍵名解析（G1/G2 必須永遠拒絕）

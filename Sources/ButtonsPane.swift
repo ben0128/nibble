@@ -227,9 +227,15 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
     @objc private func profileChanged() {
         guard let name = profilePopup.titleOfSelectedItem else { return }
-        if !pending.isEmpty { pending.removeAll(); onPendingChange?(0) }   // 換組就不套用舊組的暫存
-        do { try switchProfile(to: name); reload(); onStatus?("Profile: \(name)") }
-        catch { onStatus?("❌ \(error)") }
+        let dropped = pending.count   // 換組就不套用舊組的暫存，但要講出來
+        if dropped > 0 { pending.removeAll(); onPendingChange?(0) }
+        do {
+            try switchProfile(to: name)
+            reload()
+            onStatus?(dropped > 0
+                ? "Profile: \(name) · discarded \(dropped) unsaved button change\(dropped == 1 ? "" : "s")"
+                : "Profile: \(name)")
+        } catch { onStatus?("❌ \(error)") }
     }
 
     /// 小輸入框對話框——名稱這種一行輸入不值得開一個視窗
@@ -248,9 +254,14 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     }
 
     private func afterProfileChange(_ note: String) {
+        // reload() 會清掉暫存的改動。悄悄丟掉使用者剛編輯的東西是最糟的，
+        // 至少要說出來——連 rename（顯示的映射根本沒變）先前都是無聲清空
+        let dropped = pending.count
         rebuildProfilePopup()
         reload()
-        onStatus?(note)
+        onStatus?(dropped > 0
+            ? "\(note) · discarded \(dropped) unsaved button change\(dropped == 1 ? "" : "s")"
+            : note)
     }
 
     @objc private func newProfile() {

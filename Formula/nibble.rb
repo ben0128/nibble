@@ -21,6 +21,12 @@ class Nibble < Formula
 
       Button remapping additionally needs Accessibility permission and
       the resident menu bar (`nibble menubar`).
+
+      This formula installs the CLI only. The menu bar app bundle —
+      low-battery notifications and "start at login" — needs a source
+      build:
+        git clone https://github.com/ben0128/nibble && cd nibble
+        make install-app
     EOS
   end
 

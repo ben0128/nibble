@@ -15,8 +15,12 @@ func menuBarRunning() -> Bool {
     let fd = open(menuBarLockURL.path, O_WRONLY)   // 不建檔：沒有這個檔就代表從沒跑過
     guard fd >= 0 else { return false }
     defer { close(fd) }
+    // 只有「搶到了」能證明沒人在跑。EWOULDBLOCK 是有人握著，其他 errno
+    //（網路家目錄不支援 flock 等）代表探測本身失效——那就假設在跑，
+    // 跟 acquireMenuBarLock 的偏向一致（它也選擇別擋使用者）。
+    // 反過來回 false 會讓 doctor 和健康狀態列謊報「改鍵沒在跑」。
     if flock(fd, LOCK_EX | LOCK_NB) == 0 { flock(fd, LOCK_UN); return false }
-    return errno == EWOULDBLOCK
+    return true
 }
 
 private func acquireMenuBarLock() -> Bool {
@@ -64,9 +68,11 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastIndex: UInt8 = 1
     private var lastRGB: String? = lastKnownRGB()   // 協定無法回讀，改用設定檔記著的最後套用值
     private var engine: RemapEngineProtocol?
-    private var lowBatteryNotified = false
-    private var lastNotifyThreshold: Int?
-    /// 圖示轉紅的門檻，跟著低電量通知的設定走
+    private var lowBatteryLatch = LowBatteryLatch()
+    /// 圖示轉紅的門檻，跟著低電量通知的設定走。每次 refresh() 重讀——
+    /// 先前掛在 startEngine() 裡，而那條路在「沒有任何改鍵映射」時根本不會被走到
+    /// （refresh() 的呼叫有 !activeButtonMaps.isEmpty 的條件），於是只想用電量監看的人
+    /// 改了門檻，通知照新值發、圖示卻停在舊值直到重開程式
     private var warnPercent = defaultLowBatteryPercent
     private var refreshing = false
     private var settingsProcess: Process?
@@ -225,9 +231,6 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// 改鍵引擎：讀 config 的 per-device 映射，掛上 spy 事件流（G 系路徑）
     private func startEngine() {
-        // 設定檔一改就會走到這裡（watchConfig），順手同步圖示轉紅的門檻——
-        // 通知說「低於 30% 提醒我」，圖示卻等到 15% 才變紅是說不通的
-        warnPercent = lowBatteryThreshold(loadConfig()) ?? defaultLowBatteryPercent
         engine?.stop()
         engine = nil
         defer { updateRemapSummary() }
@@ -376,15 +379,10 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// 低電量通知：需要 .app bundle（`make app`）；裸 binary 執行時靜默略過。
     /// 一次充放電週期只提醒一次，充電後重置。門檻由設定檔決定（設定視窗可調、可關）。
-    private func notifyLowBatteryIfNeeded(percent: Int, charging: Bool, device: String) {
-        guard Bundle.main.bundleIdentifier != nil else { return }
-        guard let limit = lowBatteryThreshold(loadConfig()) else { lowBatteryNotified = false; return }
-        // 門檻剛被調過就重置閂鎖：不然把 15 改成 30、而電量已經 25%，
-        // 這一輪放電就永遠不會提醒——使用者剛設的值卻要等下次充放電才生效
-        if limit != lastNotifyThreshold { lowBatteryNotified = false; lastNotifyThreshold = limit }
-        if charging || percent > limit { lowBatteryNotified = false; return }
-        guard !lowBatteryNotified else { return }
-        lowBatteryNotified = true
+    private func notifyLowBatteryIfNeeded(percent: Int, charging: Bool, device: String, limit: Int?) {
+        // 通知需要真正的 .app（bundleIdentifier 在 repo 根目錄會誤判成有 bundle）
+        guard runningFromAppBundle() else { return }
+        guard lowBatteryLatch.shouldFire(percent: percent, charging: charging, limit: limit) else { return }
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
             guard granted else { return }
@@ -459,6 +457,9 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func refresh() {
+        // 一次讀設定檔，圖示門檻和通知門檻共用同一個值——兩者不同步過一次就再也對不回來
+        let limit = lowBatteryThreshold(loadConfig())
+        warnPercent = limit ?? defaultLowBatteryPercent
         do {
             let dev = try openDevice()
             setPermissionUI(denied: false)
@@ -470,7 +471,8 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 detailItem.title = "\(b.percent)% · \(b.charging ? "charging ⚡" : "discharging")\(volt)"
                 statusTooltip = "\(deviceItem.title) · \(b.percent)%\(volt)"
                 applyStatusAppearance()
-                notifyLowBatteryIfNeeded(percent: b.percent, charging: b.charging, device: deviceItem.title)
+                notifyLowBatteryIfNeeded(percent: b.percent, charging: b.charging, device: deviceItem.title,
+                                         limit: limit)
             }
             syncChecks(dev)
             setControlsLive(true)

@@ -32,8 +32,28 @@ func lowBatteryThreshold(_ cfg: BMConfig?) -> Int? {
     return min(max(p, lowBatteryRange.lowerBound), lowBatteryRange.upperBound)
 }
 
+/// 「一次充放電只提醒一次」的閂鎖。抽成純結構是為了能測——
+/// 這是這一輪最容易寫錯的狀態機：充電要重置、門檻改了要重新武裝、
+/// 關掉再打開也要重新武裝，而這三件事都只會在真實使用中才踩到。
+struct LowBatteryLatch {
+    private var fired = false
+    private var lastLimit: Int?
+
+    /// true = 現在該發通知
+    mutating func shouldFire(percent: Int, charging: Bool, limit: Int?) -> Bool {
+        guard let limit else { fired = false; return false }   // 通知關閉
+        // 門檻剛被調過就重新武裝：把 15 改成 30 而電量已經 25%，
+        // 否則這一輪放電永遠不會提醒——使用者剛設的值要等下次充放電才生效
+        if limit != lastLimit { fired = false; lastLimit = limit }
+        if charging || percent > limit { fired = false; return false }
+        if fired { return false }
+        fired = true
+        return true
+    }
+}
+
 func updateLowBatteryNotify(enabled: Bool, percent: Int) throws {
-    var cfg = loadConfig() ?? BMConfig()
+    var cfg = try loadConfigForWrite()
     cfg.lowBatteryNotify = enabled
     cfg.lowBatteryPercent = min(max(percent, lowBatteryRange.lowerBound), lowBatteryRange.upperBound)
     try saveConfig(cfg)
@@ -78,7 +98,7 @@ func migrateToProfiles(_ cfg: inout BMConfig) {
 
 /// 對當前 profile 的裝置映射做一次修改後存檔
 func updateActiveButtonMap(device: String, _ mutate: (inout [String: ButtonAction]) -> Void) throws {
-    var cfg = loadConfig() ?? BMConfig()
+    var cfg = try loadConfigForWrite()
     migrateToProfiles(&cfg)
     let name = currentProfileName(cfg)
     var profiles = cfg.buttonProfiles ?? [:]
@@ -105,7 +125,7 @@ enum ProfileError: Error, CustomStringConvertible {
 }
 
 func switchProfile(to name: String) throws {
-    var cfg = loadConfig() ?? BMConfig()
+    var cfg = try loadConfigForWrite()
     migrateToProfiles(&cfg)
     guard cfg.buttonProfiles?[name] != nil else { throw ProfileError.notFound(name) }
     cfg.activeProfile = name
@@ -114,7 +134,7 @@ func switchProfile(to name: String) throws {
 
 /// copyFrom 有值就複製當前 profile 的內容，否則建空的
 func createProfile(_ name: String, copyFrom source: String? = nil) throws {
-    var cfg = loadConfig() ?? BMConfig()
+    var cfg = try loadConfigForWrite()
     migrateToProfiles(&cfg)
     var profiles = cfg.buttonProfiles ?? [:]
     guard profiles[name] == nil else { throw ProfileError.exists(name) }
@@ -125,7 +145,7 @@ func createProfile(_ name: String, copyFrom source: String? = nil) throws {
 }
 
 func renameProfile(_ old: String, to new: String) throws {
-    var cfg = loadConfig() ?? BMConfig()
+    var cfg = try loadConfigForWrite()
     migrateToProfiles(&cfg)
     var profiles = cfg.buttonProfiles ?? [:]
     guard let content = profiles[old] else { throw ProfileError.notFound(old) }
@@ -139,7 +159,7 @@ func renameProfile(_ old: String, to new: String) throws {
 
 func deleteProfile(_ name: String) throws {
     guard name != defaultProfileName else { throw ProfileError.cannotDeleteDefault }
-    var cfg = loadConfig() ?? BMConfig()
+    var cfg = try loadConfigForWrite()
     migrateToProfiles(&cfg)
     var profiles = cfg.buttonProfiles ?? [:]
     guard profiles.removeValue(forKey: name) != nil else { throw ProfileError.notFound(name) }
@@ -153,14 +173,49 @@ func loadConfig() -> BMConfig? {
     (try? Data(contentsOf: bmConfigURL)).flatMap { try? JSONDecoder().decode(BMConfig.self, from: $0) }
 }
 
+/// 寫入前一定要走這條，不能用 `loadConfig() ?? BMConfig()`。
+///
+/// loadConfig() 兩種情況都回 nil——「檔案不存在」和「檔案在、但解不開」——
+/// 於是 `?? BMConfig()` 會把後者當成前者，用一份空設定覆蓋掉整個檔案。
+/// 這個檔案是文件明確邀請使用者手改的，而 Codable 的 decodeIfPresent 對
+/// 型別不符是 throw 而不是回 nil：把 `"lowBatteryPercent": 20.5` 打成小數，
+/// 就足以讓下一次寫入清空所有 buttonProfiles。
+func loadConfigForWrite() throws -> BMConfig {
+    guard let data = try? Data(contentsOf: bmConfigURL) else { return BMConfig() }
+    do { return try JSONDecoder().decode(BMConfig.self, from: data) }
+    catch { throw ConfigError.unreadable("\(error)") }
+}
+
+enum ConfigError: Error, CustomStringConvertible {
+    case unreadable(String)
+
+    var description: String {
+        // 訊息要能直接指路：使用者手改壞了，就該知道去哪裡看、以及原檔還在
+        switch self {
+        case .unreadable(let why):
+            return "\(bmConfigURL.path) exists but could not be read — refusing to overwrite it. "
+                 + "Fix the file (or move it aside) and retry. Details: \(why)"
+        }
+    }
+}
+
 func saveConfig(_ c: BMConfig) throws {
     let enc = JSONEncoder()
     enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-    try (try enc.encode(c)).write(to: bmConfigURL)
+    // .atomic：中途失敗（斷電、磁碟滿）留下的是原檔，而不是一個半截、解不開的檔案。
+    // 沒有這個旗標，一次失敗的寫入就會把設定檔推進 loadConfigForWrite 的拒絕路徑。
+    // watchConfig() 已經監看 .rename/.delete，所以換檔式寫入照樣會觸發重載。
+    try (try enc.encode(c)).write(to: bmConfigURL, options: .atomic)
 }
 
-let bmConfigURL = FileManager.default.homeDirectoryForCurrentUser
-    .appendingPathComponent(".config/nibble.json")
+/// 正式執行時是 ~/.config/nibble.json。可用 NIBBLE_CONFIG 覆寫——
+/// 測試靠它把寫入路徑導去暫存目錄，才有可能測到「寫入不能弄丟既有內容」。
+var bmConfigURL: URL = {
+    if let p = ProcessInfo.processInfo.environment["NIBBLE_CONFIG"], !p.isEmpty {
+        return URL(fileURLWithPath: p)
+    }
+    return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/nibble.json")
+}()
 
 /// 燈效無法回讀，但設定檔記著我們最後套用的值——開機時用它當已知狀態
 let nibbleRGBKinds = ["off", "cycle", "breathing"]

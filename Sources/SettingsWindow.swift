@@ -218,7 +218,8 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         // Save/Close：改鍵不再邊改邊寫檔，改動先暫存，按 Save 才落地
         saveButton.target = self
         saveButton.action = #selector(saveButtonsAction)
-        saveButton.keyEquivalent = "\r"          // Enter 直接儲存
+        // Enter 直接儲存——但只在 Buttons 分頁（見 syncSaveButton）。預設按鈕會在
+        // 第一響應者之前吃掉 Return，在 General 打 DPI 按 Enter 就會變成「送出改鍵」。
         saveButton.isEnabled = false
         saveButton.toolTip = "Write the pending button changes to the config file. The menu bar reloads the engine after that."
         closeButton.target = self
@@ -349,6 +350,8 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     /// 唯一例外：Buttons 有暫存改動時仍然留著，否則切個分頁就找不到儲存的地方了。
     private func syncSaveButton() {
         saveButton.isHidden = !onButtonsTab && buttonsPane.pendingCount == 0
+        // Return 只在 Buttons 分頁代表「儲存」；在 General 它該留給輸入框
+        saveButton.keyEquivalent = onButtonsTab ? "\r" : ""
     }
 
     // 設定器哲學：關窗即退出
@@ -536,7 +539,10 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         let cfg = loadConfig()
         let limit = lowBatteryThreshold(cfg)
         notifyCheck.state = limit == nil ? .off : .on
-        notifyField.stringValue = "\(limit ?? cfg?.lowBatteryPercent ?? defaultLowBatteryPercent)"
+        // 關閉狀態下也顯示夾過的值：手改成 99 卻顯示 99，會讓人以為那是生效中的門檻
+        let shown = limit ?? cfg?.lowBatteryPercent.map { min(max($0, lowBatteryRange.lowerBound), lowBatteryRange.upperBound) }
+                          ?? defaultLowBatteryPercent
+        notifyField.stringValue = "\(shown)"
         notifyField.isEnabled = limit != nil
     }
 
@@ -570,14 +576,24 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         imFix.isHidden = im
 
         let st = EngineState.read()
+        let running = menuBarRunning()
         // 引擎跑在選單列那個程序裡，所以要看它回報的授權狀態，不是這個視窗自己的
-        // （從終端機跑 `nibble ui` 時，這個程序的授權是終端機的，跟 Nibble.app 無關）
-        let ax = (st["axTrusted"] as? Bool) ?? axTrusted()
-        setHealth(axValue, ok: ax, ax ? "granted" : "not granted — remapped buttons stay silent")
-        axFix.isHidden = ax
+        //（從終端機跑 `nibble ui` 時，這個程序的授權是終端機的，跟 Nibble.app 無關）。
+        // 但那份狀態是「上次回報」——選單列關掉後就不再更新，而重建 bundle 會讓
+        // 綁在 cdhash 上的授權失效。所以沒在跑的時候只能說不知道，不能照著舊值說 ✓。
+        if running, let ax = st["axTrusted"] as? Bool {
+            setHealth(axValue, ok: ax, ax ? "granted" : "not granted — remapped buttons stay silent")
+            axFix.isHidden = ax
+        } else if running {
+            setHealth(axValue, ok: nil, "the menu bar hasn't reported yet")
+            axFix.isHidden = false
+        } else {
+            setHealth(axValue, ok: nil, "unknown — the menu bar isn't running to report it")
+            axFix.isHidden = false
+        }
 
         let mapped = activeButtonMaps(loadConfig()).values.reduce(0) { $0 + $1.count }
-        if !menuBarRunning() {
+        if !running {
             setHealth(engineValue, ok: mapped > 0 ? false : nil,
                       mapped > 0 ? "menu bar not running — your \(mapped) remap\(mapped == 1 ? "" : "s") are off"
                                  : "menu bar not running")
@@ -593,11 +609,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             engineFix.isHidden = true
         }
 
-        startupCheck.isEnabled = LoginItem.supported
-        startupCheck.state = LoginItem.enabled ? .on : .off
-        let note = LoginItem.note
-        startupNote.isHidden = (note == "on" || note == "off")
-        startupNote.stringValue = startupNote.isHidden ? "" : note
+        let login = LoginItem.snapshot
+        startupCheck.isEnabled = login.supported
+        startupCheck.state = login.enabled ? .on : .off
+        startupNote.isHidden = (login.note == "on" || login.note == "off")
+        startupNote.stringValue = startupNote.isHidden ? "" : login.note
     }
 
     @objc private func openInputMonitoringAction() { openInputMonitoringSettings() }
@@ -630,13 +646,18 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
 
     @objc private func startupToggled() {
         let on = startupCheck.state == .on
-        do {
-            try LoginItem.set(on)
-            setStatus(on ? "Nibble will start at login ✓" : "Login item removed")
-        } catch {
-            setStatus("❌ \(error)", sticky: true)
-        }
+        var failure: String?
+        do { try LoginItem.set(on) } catch { failure = "\(error)" }
         refreshHealth()   // 系統可能拒絕或需要核可，勾選框要反映真實狀態而不是使用者的點擊
+        // 訊息要在 refreshHealth 之後、依照真正生效的狀態決定——
+        // 先前會出現「will start at login ✓」旁邊那個勾選框自己彈回去的矛盾畫面
+        if let failure {
+            setStatus("❌ \(failure)", sticky: true)
+        } else if LoginItem.needsApproval {
+            setStatus("Registered, but macOS is blocking it — enable Nibble in System Settings › General › Login Items", sticky: true)
+        } else {
+            setStatus(LoginItem.enabled ? "Nibble will start at login ✓" : "Login item removed")
+        }
     }
 
     @objc private func notifyToggled() {
@@ -650,17 +671,18 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     private func applyNotifySettings() {
         let on = notifyCheck.state == .on
         let typed = Int(notifyField.stringValue.trimmingCharacters(in: .whitespaces))
-        if on, let v = typed, !lowBatteryRange.contains(v) {
-            setStatus("⚠️ threshold must be between \(lowBatteryRange.lowerBound) and \(lowBatteryRange.upperBound)%")
-        }
-        let percent = typed ?? defaultLowBatteryPercent
+        let clamped = on && typed != nil && !lowBatteryRange.contains(typed!)
         do {
-            try updateLowBatteryNotify(enabled: on, percent: percent)
+            try updateLowBatteryNotify(enabled: on, percent: typed ?? defaultLowBatteryPercent)
             loadPreferences()   // 夾過範圍後把真正生效的值寫回欄位
-            if on { setStatus("Low-battery alert at \(notifyField.stringValue)% ✓") }
-            else { setStatus("Low-battery alerts off") }
+            // 一次只講一句話：先前警告訊息會被下面那句成功訊息立刻蓋掉，
+            // 於是輸入 99 只看得到「已設定 50%」，沒人知道自己打的值被改了
+            guard on else { setStatus("Low-battery alerts off"); return }
+            setStatus(clamped
+                ? "⚠️ \(lowBatteryRange.lowerBound)–\(lowBatteryRange.upperBound)% only — using \(notifyField.stringValue)%"
+                : "Low-battery alert at \(notifyField.stringValue)% ✓")
         } catch {
-            setStatus("❌ \(error)")
+            setStatus("❌ \(error)", sticky: true)
         }
     }
 

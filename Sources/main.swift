@@ -8,9 +8,11 @@ if let i = rawArgs.firstIndex(of: "--json") {
     rawArgs.remove(at: i)
 }
 
-// 從 .app bundle 雙擊啟動時沒有引數（Finder 只會塞 -psn_*）→ 直接進選單列模式
-let bundled = Bundle.main.bundleIdentifier != nil
-let fromFinder = bundled && rawArgs.allSatisfy { $0.hasPrefix("-psn_") }
+// 從 .app bundle 雙擊啟動時沒有引數（Finder 只會塞 -psn_*，新版常常什麼都不塞）→ 直接進選單列模式。
+// 這裡一定要用 runningFromAppBundle()：只看 bundleIdentifier 的話，在 repo 根目錄
+// 跑 `./nibble`（無引數）會被當成雙擊，於是把常駐選單列開起來、還搶走 HID 裝置——
+// 而使用者要的只是印出說明。
+let fromFinder = runningFromAppBundle() && rawArgs.allSatisfy { $0.hasPrefix("-psn_") }
 let command = fromFinder ? "menubar" : (rawArgs.first ?? "help")
 let subArgs = fromFinder ? [] : Array(rawArgs.dropFirst())
 
