@@ -16,13 +16,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     private var window: NSWindow!
     private let deviceLabel = NSTextField(labelWithString: "Detecting…")
     private let batteryLabel = NSTextField(labelWithString: "")
-    private let linkLabel = NSTextField(labelWithString: "")
     // DPI 用與選單列相同的級距——先前滑桿 100–6400、選單 400–3200、CLI 50–25600 三套並存
     private let dpiControl = NSSegmentedControl(labels: MenuBarDelegate.dpiPresets.map(String.init),
                                                 trackingMode: .selectOne, target: nil, action: nil)
     private let dpiCustom = NSTextField(string: "")
     private let rateControl = NSSegmentedControl(labels: ["125", "250", "500", "1000"], trackingMode: .selectOne, target: nil, action: nil)
-    private let rateNote = NSTextField(labelWithString: "")
     private let rgbControl = NSSegmentedControl(labels: ["Off", "Cycle", "Breathing"], trackingMode: .selectOne, target: nil, action: nil)
     private let rgbNote = NSTextField(labelWithString: "Lighting can't be read back from the mouse")
     private let replayCheck = NSButton(checkboxWithTitle: "Re-apply my settings at login", target: nil, action: nil)
@@ -42,12 +40,10 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         batteryLabel.textColor = .secondaryLabelColor
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.font = .systemFont(ofSize: 11)
-        linkLabel.textColor = .secondaryLabelColor
-        linkLabel.font = .systemFont(ofSize: 11)
         rgbControl.toolTip = "Written to the device immediately. The mouse has no way to report its current effect back, so Nibble shows the last one it applied."
         rateControl.toolTip = "Higher rates poll more often — smoother tracking, slightly more battery. Writing this requires host mode; Nibble switches automatically."
         replayCheck.toolTip = "Installs a one-shot launchd agent that runs `nibble apply` at login. It exits immediately after — nothing stays resident."
-        for note in [rateNote, rgbNote] {
+        for note in [rgbNote] {
             note.font = .systemFont(ofSize: 11)
             note.textColor = .tertiaryLabelColor
         }
@@ -74,10 +70,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         let customCaption = NSTextField(labelWithString: "Custom")
         customCaption.font = .systemFont(ofSize: 11)
         customCaption.textColor = .secondaryLabelColor
-        let customUnit = NSTextField(labelWithString: "dpi")
-        customUnit.font = .systemFont(ofSize: 11)
-        customUnit.textColor = .tertiaryLabelColor
-        let dpiCustomRow = NSStackView(views: [customCaption, dpiCustom, customUnit])
+        let dpiCustomRow = NSStackView(views: [customCaption, dpiCustom])
         dpiCustomRow.spacing = 6
         dpiCustomRow.alignment = .centerY
 
@@ -92,7 +85,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
 
         let generalStack = NSStackView(views: [
             sectionLabel("DPI"), dpiControl, dpiCustomRow,
-            sectionLabel("Report rate (Hz)"), rateControl, rateNote,
+            sectionLabel("Report rate (Hz)"), rateControl,
             sectionLabel("Lighting"), rgbControl, rgbNote,
             NSBox(), lifecycle, startupRow,
         ])
@@ -136,7 +129,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
 
         // 全程 Auto Layout：NSTabView 用 frame 幫分頁排版，內容一旦帶固定約束就會打架、溢出邊界
         let root = NSView()
-        for v in [deviceLabel, batteryLabel, linkLabel, tabs, statusLabel, aboutButton] as [NSView] {
+        for v in [deviceLabel, batteryLabel, tabs, statusLabel, aboutButton] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
@@ -158,11 +151,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             batteryLabel.leadingAnchor.constraint(equalTo: deviceLabel.leadingAnchor),
             batteryLabel.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -18),
 
-            linkLabel.topAnchor.constraint(equalTo: batteryLabel.bottomAnchor, constant: 1),
-            linkLabel.leadingAnchor.constraint(equalTo: deviceLabel.leadingAnchor),
-            linkLabel.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -18),
-
-            tabs.topAnchor.constraint(equalTo: linkLabel.bottomAnchor, constant: 10),
+            tabs.topAnchor.constraint(equalTo: batteryLabel.bottomAnchor, constant: 10),
             tabs.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
             tabs.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
 
@@ -257,15 +246,22 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             deviceLabel.stringValue = (try? dev.name()) ?? "Logitech #\(lastIndex)"
             updateBattery(dev)
             if let tr = dev.transport as? ReceiverTransport {
-                linkLabel.stringValue = String(format: "receiver 046D:%04X · device #%d", tr.productID, Int(lastIndex))
+                // 連線細節屬於除錯資訊，放 hover；表頭留給名字和電量
+                deviceLabel.toolTip = String(format: "%@ 046D:%04X · device index %d · HID++",
+                                             tr.isDirect ? "bluetooth-direct" : "receiver",
+                                             tr.productID, Int(lastIndex))
             }
             if let dpi = try? dev.currentDPI() { showDPI(dpi) }
             if let hz = try? dev.reportRateHz(), let i = Self.rateValues.firstIndex(of: hz) {
                 rateControl.selectedSegment = i
             }
             let supported = (try? dev.supportedReportRatesHz()) ?? []
-            rateNote.stringValue = supported.isEmpty ? "" :
-                "supported: " + supported.sorted().map(String.init).joined(separator: " / ") + " Hz"
+            // 支援清單放 tooltip：它和上面那排按鈕通常一模一樣，常駐顯示只是重複
+            if !supported.isEmpty {
+                rateControl.toolTip = "This device supports "
+                    + supported.sorted().map(String.init).joined(separator: " / ") + " Hz. "
+                    + "Writing the rate requires host mode; Nibble switches automatically."
+            }
             showLighting()
             replayCheck.state = FileManager.default.fileExists(atPath: replayPlistURL.path) ? .on : .off
             setStatus("Ready")
@@ -303,7 +299,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     private func showLighting() {
         if let kind = lastRGB, let i = Self.rgbKinds.firstIndex(of: kind) {
             rgbControl.selectedSegment = i
-            rgbNote.stringValue = "Last applied by Nibble — the mouse can't confirm it"
+            rgbNote.stringValue = ""   // 知道值就不必每次都提醒但書，tooltip 裡有
         } else {
             rgbControl.selectedSegment = -1
             rgbNote.stringValue = "Current effect is unknown — the mouse can't report it back"
