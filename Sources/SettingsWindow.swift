@@ -27,7 +27,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private let rgbNote = NSTextField(labelWithString: "Lighting can't be read back from the mouse")
     private let replayCheck = NSButton(checkboxWithTitle: "Re-apply my settings at login", target: nil, action: nil)
     private let statusLabel = NSTextField(labelWithString: " ")
-    private let aboutButton = NSButton(title: "Nibble \(NIBBLE_VERSION)", target: nil, action: nil)
+    private let aboutButton = NSButton(title: "GitHub", target: nil, action: nil)
     private var lastIndex: UInt8 = 1
     private var lastRGB: String? = lastKnownRGB()
     private let buttonsPane = ButtonsPane()
@@ -114,8 +114,16 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         aboutButton.isBordered = false
         aboutButton.target = self
         aboutButton.action = #selector(openRepo)
-        aboutButton.contentTintColor = .secondaryLabelColor
-        aboutButton.font = .systemFont(ofSize: 11)
+        // 「GitHub」用強調色標示可點，版本號用次要色——一眼分得出哪部分是連結
+        let footer = NSMutableAttributedString(string: "GitHub", attributes: [
+            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+            .foregroundColor: NSColor.controlAccentColor,
+        ])
+        footer.append(NSAttributedString(string: "  ·  v\(NIBBLE_VERSION)", attributes: [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ]))
+        aboutButton.attributedTitle = footer
         aboutButton.toolTip = "github.com/ben0128/nibble — MIT"
         aboutButton.setContentHuggingPriority(.required, for: .horizontal)
         aboutButton.setContentCompressionResistancePriority(.required, for: .horizontal)
