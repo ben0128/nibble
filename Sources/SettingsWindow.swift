@@ -46,6 +46,8 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     private let aboutButton = NSButton(title: "GitHub", target: nil, action: nil)
     private let saveButton = NSButton(title: "Save", target: nil, action: nil)
     private let closeButton = NSButton(title: "Close", target: nil, action: nil)
+    /// Save 只屬於 Buttons 分頁；General 是即時寫入的，那裡不該擺一顆永遠灰著的按鈕
+    private var onButtonsTab = false
     private var lastIndex: UInt8 = 1
     private var lastRGB: String? = lastKnownRGB()
     private let buttonsPane = ButtonsPane()
@@ -132,6 +134,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         buttonsPane.onPendingChange = { [weak self] count in
             self?.saveButton.isEnabled = count > 0
             self?.saveButton.title = count > 0 ? "Save (\(count))" : "Save"
+            self?.syncSaveButton()
         }
 
         // Save/Close：改鍵不再邊改邊寫檔，改動先暫存，按 Save 才落地
@@ -143,6 +146,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         closeButton.target = self
         closeButton.action = #selector(closeAction)
         closeButton.keyEquivalent = "\u{1b}"     // Esc 關窗
+        // 放進 NSStackView：藏起 Save 時堆疊會自動收合它的位置，Close 就補上右下角，
+        // 不會留一塊「本來有東西」的空白。單獨下約束做不到這件事。
+        let buttonBar = NSStackView(views: [closeButton, saveButton])
+        buttonBar.spacing = 10
+        buttonBar.alignment = .centerY
 
         // 版本資訊移到右上角：右下角留給 Save/Close
         aboutButton.bezelStyle = .inline
@@ -165,7 +173,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
 
         // 全程 Auto Layout：NSTabView 用 frame 幫分頁排版，內容一旦帶固定約束就會打架、溢出邊界
         let root = NSView()
-        for v in [deviceLabel, batteryLabel, tabs, statusLabel, aboutButton, saveButton, closeButton] as [NSView] {
+        for v in [deviceLabel, batteryLabel, tabs, statusLabel, aboutButton, buttonBar] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
@@ -191,16 +199,14 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             tabs.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
             tabs.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
 
-            tabs.bottomAnchor.constraint(equalTo: saveButton.topAnchor, constant: -10),
+            tabs.bottomAnchor.constraint(equalTo: buttonBar.topAnchor, constant: -10),
             statusLabel.topAnchor.constraint(greaterThanOrEqualTo: tabs.bottomAnchor, constant: 6),
             statusLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
-            statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: saveButton.leadingAnchor, constant: -12),
-            statusLabel.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
+            statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: buttonBar.leadingAnchor, constant: -12),
+            statusLabel.centerYAnchor.constraint(equalTo: buttonBar.centerYAnchor),
 
-            saveButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
-            saveButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -14),
-            closeButton.trailingAnchor.constraint(equalTo: saveButton.leadingAnchor, constant: -10),
-            closeButton.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
+            buttonBar.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
+            buttonBar.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -14),
 
             aboutButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
             aboutButton.centerYAnchor.constraint(equalTo: deviceLabel.centerYAnchor),
@@ -219,6 +225,8 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         window.makeKeyAndOrderFront(nil)
 
         if initialTab == "buttons" { tabs.selectTabViewItem(withIdentifier: "buttons") }
+        onButtonsTab = (tabs.selectedTabViewItem?.identifier as? String) == "buttons"
+        syncSaveButton()
         loadState()
         buttonsPane.reload()
         headerTimer = Timer.scheduledTimer(withTimeInterval: 45, repeats: true) { [weak self] _ in
@@ -252,6 +260,14 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
 
     func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
         setStatus("")
+        onButtonsTab = (tabViewItem?.identifier as? String) == "buttons"
+        syncSaveButton()
+    }
+
+    /// General 是即時寫入的，沒有東西可以 Save——那裡就不擺這顆按鈕。
+    /// 唯一例外：Buttons 有暫存改動時仍然留著，否則切個分頁就找不到儲存的地方了。
+    private func syncSaveButton() {
+        saveButton.isHidden = !onButtonsTab && buttonsPane.pendingCount == 0
     }
 
     // 設定器哲學：關窗即退出
