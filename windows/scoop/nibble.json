@@ -1,0 +1,31 @@
+{
+    "##": [
+        "Scoop manifest — 準備好但尚未發佈。",
+        "win-v0.1.0 通過硬體驗證（M0 GO + VM 內實測 CLI）之前不建 bucket、不填 hash：",
+        "沒碰過真滑鼠的 binary 不上任何套件管理器。",
+        "發佈流程：gh release create win-v0.1.0（zip：nibble.exe + nibble-tray.exe）",
+        "→ 填 url/hash → 複製到 ben0128/scoop-nibble bucket repo → scoop install nibble 實測。"
+    ],
+    "version": "0.1.0",
+    "description": "Lightweight Logitech mouse control — DPI, report rate, battery, lighting. No G HUB.",
+    "homepage": "https://github.com/ben0128/nibble",
+    "license": "MIT",
+    "url": "https://github.com/ben0128/nibble/releases/download/win-v0.1.0/nibble-windows-x64.zip",
+    "hash": "TO-BE-FILLED-AT-RELEASE",
+    "bin": [
+        "nibble.exe",
+        "nibble-tray.exe"
+    ],
+    "checkver": {
+        "github": "https://github.com/ben0128/nibble",
+        "regex": "win-v([\\d.]+)"
+    },
+    "autoupdate": {
+        "url": "https://github.com/ben0128/nibble/releases/download/win-v$version/nibble-windows-x64.zip"
+    },
+    "notes": [
+        "First run: no permission prompts needed (unlike macOS — Windows HID vendor collections are open).",
+        "Tray: run nibble-tray.exe once; battery lives in the notification area.",
+        "If Logitech G HUB is running, both tools share the device — doctor will tell you."
+    ]
+}

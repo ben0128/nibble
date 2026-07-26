@@ -79,6 +79,13 @@ M2  transport + CLI，VM 內對 G502 實測全部讀寫指令；cargo-mutants �
 M3  tray + Scoop bucket + win-v0.1.0 首發（x64 + ARM64 zip）。
 ```
 
+**現況（2026-07-27，Ben 解除 VM 前置後）**：M1 完成；M2/M3 的**程式碼**全部建好——
+transport、CLI、托盤、Scoop manifest（`windows/scoop/nibble.json`，hash 留空）。
+CI 在真 Windows 上實測了無裝置路徑（exit codes 0/1/2/64、error JSON、doctor 誠實度）。
+實測體積：nibble.exe 376 KB、nibble-tray.exe 181 KB。
+**尚未動的只有「發佈」——閘門從「開工」移到「上架」：binaries 未接觸過真滑鼠之前，
+win-v0.1.0 不發、bucket 不建。**硬體驗證清單見 windows/spike/README.md §5。
+
 實務註記：接收器指派給 VM 期間 Mac 沒有滑鼠——先把 BT 的 MX Master 3 或 Magic Mouse 配好再開工。
 
 實作計畫切法：第一份 plan 只涵蓋 M0 + macOS 前置 + M1（M0 放最前，NO-GO 即中止）；M2/M3 過閘後另開 plan——在一個可能被 M0 殺掉的計畫裡預先細排 M3 是浪費。
