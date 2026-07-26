@@ -123,7 +123,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         systemPopup.target = self
         systemPopup.action = #selector(applyEditor)
 
-        appField.placeholderString = "or launch an app, e.g. Safari"
+        appField.placeholderString = "or an app name / deeplink, e.g. Safari or raycast://…"
         appField.target = self
         appField.action = #selector(appFieldCommitted)
         appField.font = .systemFont(ofSize: 12)
@@ -250,7 +250,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         case "system":
             typeControl.selectedSegment = 1
             let a = r.action?.action ?? ""
-            if a.hasPrefix("app:") { appField.stringValue = String(a.dropFirst(4)) }
+            if a.hasPrefix("app:") || a.hasPrefix("url:") { appField.stringValue = String(a.dropFirst(4)) }
             else { systemPopup.selectItem(withTitle: a) }
         case "disable":
             typeControl.selectedSegment = 2
@@ -268,7 +268,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         appField.isHidden = idx != 1
         switch idx {
         case 0: editorNote.stringValue = "Click the field and press the combination. Esc clears it."
-        case 1: editorNote.stringValue = "Pick a system action, or type an app name to launch it."
+        case 1: editorNote.stringValue = "Pick a system action, or type an app name / deeplink to open."
         case 2: editorNote.stringValue = "The button will do nothing at all."
         default: editorNote.stringValue = "The mouse handles this button itself."
         }
@@ -293,9 +293,10 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             guard let combo = recorder.combo, parseCombo(combo) != nil else { return }   // 還沒錄到就先不寫
             action = ButtonAction(type: "keys", keys: combo, action: nil)
         case 1:
-            let app = appField.stringValue.trimmingCharacters(in: .whitespaces)
+            let entry = appField.stringValue.trimmingCharacters(in: .whitespaces)
+            let custom = entry.contains("://") ? "url:\(entry)" : "app:\(entry)"
             action = ButtonAction(type: "system", keys: nil,
-                                  action: app.isEmpty ? systemPopup.titleOfSelectedItem : "app:\(app)")
+                                  action: entry.isEmpty ? systemPopup.titleOfSelectedItem : custom)
         case 2:
             action = ButtonAction(type: "disable", keys: nil, action: nil)
         default:

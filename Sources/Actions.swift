@@ -85,6 +85,12 @@ func performSystem(_ raw: String) -> Bool {
         sh(["/usr/bin/open", "-a", String(raw.dropFirst(4))])
         return true
     }
+    // deeplink：raycast://、obsidian://、shortcuts:// 等等都走這條
+    if raw.hasPrefix("url:") {
+        let target = String(raw.dropFirst(4))
+        if let u = URL(string: target) { NSWorkspace.shared.open(u) } else { sh(["/usr/bin/open", target]) }
+        return true
+    }
     switch SystemAction(rawValue: raw) {
     case .missionControl: sh(["/usr/bin/open", "-a", "Mission Control"]); return true
     case .playPause: postMediaKey(16); return true    // NX_KEYTYPE_PLAY
