@@ -8,9 +8,9 @@ Lightweight, zero-dependency Logitech mouse control for macOS. Single binary, un
 
 ## Requirements
 
-- macOS, Swift toolchain (`xcode-select --install`)
-- Logitech mouse on a USB receiver (Lightspeed/Unifying), or paired directly over Bluetooth (MX-series and other BLE HID++ mice)
-- Tested: G502 LIGHTSPEED via receiver `046D:C539`, HID++ 4.2. The Bluetooth-direct path is implemented per the HID++ spec but not yet verified on hardware.
+- macOS 13 or later, Swift toolchain (`xcode-select --install`)
+- Logitech mouse on a USB receiver (Lightspeed/Unifying), over a USB cable, or paired directly over Bluetooth (MX-series and other BLE HID++ mice)
+- Tested: G502 LIGHTSPEED via receiver `046D:C539`, HID++ 4.2. The Bluetooth-direct path is implemented per the HID++ spec but not yet verified on hardware; the same goes for the MX-series remap path (`0x1b04`).
 
 ## Install
 
@@ -29,6 +29,8 @@ brew tap ben0128/nibble
 brew trust ben0128/nibble    # Homebrew requires trusting third-party taps
 brew install nibble
 ```
+
+Homebrew installs the **CLI only**. The menu bar app — which hosts the remap engine and adds low-battery notifications and *start at login* — comes from a source build (`make install-app` above).
 
 First run needs **Input Monitoring** permission: System Settings → Privacy & Security → Input Monitoring → enable your terminal app → re-run. Error `0xE00002E2` means this permission is missing. No restart needed after granting.
 
@@ -65,7 +67,7 @@ If remaps do nothing, run `nibble doctor` — it reports whether the engine is r
 Debug: `NIBBLE_DEBUG=1 nibble <cmd>` prints raw HID++ packets.
 Exit codes: `0` ok · `1` no awake device or value not applied · `2` transport/protocol error · `64` usage.
 
-**For scripts and agents:** `--json` works on every read command (`status`, `battery`, `dump`, `buttons`, `onboard info`, `doctor`, `version`). Errors also emit JSON: `{"error": "...", "code": "no-awake-device"}`. `doctor --json` returns `{"ok": bool, "failed": n, "checks": [...], "nextStep": "<command or setting to fix first>"}` — the fastest path from "it doesn't work" to a concrete fix.
+**For scripts and agents:** `--json` works on every read command (`status`, `battery`, `dump`, `buttons`, `onboard info`, `doctor`, `startup`, `version`). Errors also emit JSON: `{"error": "...", "code": "no-awake-device"}`. `doctor --json` returns `{"ok": bool, "failed": n, "checks": [...], "nextStep": "<command or setting to fix first>"}` — the fastest path from "it doesn't work" to a concrete fix.
 
 
 ## Config file `~/.config/nibble.json`
@@ -124,6 +126,7 @@ Config keeps them under `buttonProfiles` with `activeProfile` naming the live on
 - Button remaps are hosted by `nibble menubar` (the opt-in resident mode). G-series path: the spy-layer remap zeroes the button's standard HID output and Nibble synthesizes your action from the event stream (`0x8110`). Quitting the menu bar restores factory behavior immediately; a power cycle does too. Actions: `keys` (e.g. `cmd+shift+4`), `macro` (a comma-separated sequence: `cmd+c, 150ms, cmd+v` — steps are key combinations or delays in `ms`/`s`, capped at 64 steps and 30s total), `system` (`mission-control`, `play-pause`, `next-track`, `prev-track`, `volume-up`, `volume-down`, `mute`, `app:Name`, `url:<deeplink>` — e.g. `url:raycast://extensions/mooxl/deepcast/index`), `disable`.
 
 Macros play on their own queue, so a long sequence never blocks the button that started it. Competitive games often forbid input automation — check before binding one. G1/G2 (left/right click) are never remapped.
+- The config file is yours to edit, and Nibble treats it that way: a file it can't parse is **refused, not replaced** (the error names the file and the parse failure), writes are atomic, and a config symlinked into a dotfiles repo is written *through* rather than replaced. Every write merges — no path rewrites the whole file from scratch.
 - Zero resident processes unless you opt into `menubar`.
 
 ## Troubleshooting
@@ -134,6 +137,9 @@ Macros play on their own queue, so a long sequence never blocks the button that 
 | "no awake device" | Mouse asleep → move it, re-run |
 | HID++ error `0x02` on write | Onboard mode rejects it → handled by automatic host-mode fallback |
 | No Logitech device found | Needs vendor `0x046D` with HID usage page `0xFF00` (receiver) or `0xFF43` (Bluetooth-direct) |
+| "exists but could not be read — refusing to overwrite it" | Hand-edited `nibble.json` has a JSON or type error (e.g. `20.5` where an integer belongs) → fix it or move it aside. Nibble will not overwrite a config it can't parse, so nothing was lost |
+| Remaps worked, then stopped after a reboot | The menu bar hosts the engine and wasn't restarted → tick *Start Nibble at login*, or `nibble startup on`. The login **replay** switch only restores DPI, rate and lighting |
+| Remaps stopped after rebuilding the app | Accessibility is bound to the code signature → re-grant it to `/Applications/Nibble.app`; `nibble doctor` says so too |
 | Writes send but no replies ever arrive | If hacking on the code: IOHIDManager must outlive the device object |
 
 ## Tests
@@ -178,9 +184,13 @@ Sources/MenuBar.swift         interactive NSStatusItem menu (opt-in resident)
 Sources/SettingsWindow.swift  native AppKit settings panel (quits on close)
 Sources/ButtonsPane.swift     Buttons tab: device-enumerated remap table
 Sources/KeyRecorder.swift     press-a-key shortcut recorder
+Sources/StatusIcon.swift      the menu bar glyph, drawn (battery inside the mouse)
+Sources/Config.swift          ~/.config/nibble.json — types, merge, profiles, write protection
 Sources/LoginItem.swift       login item registration (SMAppService)
 Sources/L10n.swift            --json output + machine-readable errors
+Sources/Version.swift         one version constant, readable from the test build too
 Sources/main.swift            argv dispatch
+Tests/main.swift              the suite; Tests/mutate.py audits whether it protects anything
 ```
 
 Protocol notes for G-series: battery is `0x1001` BatteryVoltage (millivolts + LiPo curve), not `0x1000`/`0x1004`. Onboard sectors are 255 B (not 16-aligned) — read the tail with an overlapping read at `sectorSize-16`.
