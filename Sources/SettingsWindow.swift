@@ -164,12 +164,12 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             aboutButton.centerYAnchor.constraint(equalTo: statusLabel.centerYAnchor),
         ])
 
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 660, height: 470),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 480),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
         window.title = "Nibble"
         window.contentView = root
-        window.contentMinSize = NSSize(width: 640, height: 450)
+        window.contentMinSize = NSSize(width: 680, height: 450)
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()

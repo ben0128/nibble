@@ -23,7 +23,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
     // 右側編輯面板
     private let editorTitle = NSTextField(labelWithString: "No button selected")
-    private let typeControl = NSSegmentedControl(labels: ["Keystroke", "Macro", "System", "Disable", "Default"],
+    private let typeControl = NSSegmentedControl(labels: ["Keys", "Macro", "System", "Disable", "Default"],
                                                  trackingMode: .selectOne, target: nil, action: nil)
     private let macroField = NSTextField(string: "")
     private let recorder = KeyRecorderView(frame: .zero)
@@ -150,7 +150,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
             editor.topAnchor.constraint(equalTo: scroll.topAnchor),
             editor.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
-            editor.widthAnchor.constraint(equalToConstant: 260),
+            editor.widthAnchor.constraint(equalToConstant: 300),
             editor.bottomAnchor.constraint(lessThanOrEqualTo: hintLabel.topAnchor, constant: -8),
         ])
         rebuildProfilePopup()
@@ -163,7 +163,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
         typeControl.target = self
         typeControl.action = #selector(typeChanged)
-        typeControl.segmentDistribution = .fillEqually
+        typeControl.segmentDistribution = .fillProportionally
 
         recorder.onChange = { [weak self] _ in self?.applyEditor() }
         recorder.toolTip = "Click here, then press the combination you want. Esc clears it."
