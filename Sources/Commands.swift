@@ -31,8 +31,31 @@ func cmdStatus() -> Int32 {
         let tr = try ReceiverTransport.openFirst()
         let devs = discover(tr)
         guard let hit = devs.first else {
-            print("接收器在（PID 0x\(String(format: "%04X", tr.productID))），但沒有醒著的裝置——滑鼠睡著了？晃兩下再試")
+            emitError(L("receiver present (PID 0x\(String(format: "%04X", tr.productID))) but no awake device — move the mouse and retry",
+                        "接收器在（PID 0x\(String(format: "%04X", tr.productID))），但沒有醒著的裝置——晃兩下滑鼠再試"),
+                      code: "no-awake-device")
             return 1
+        }
+        if jsonMode {
+            let b = try? hit.dev.battery()
+            emitJSON([
+                "version": NIBBLE_VERSION,
+                "device": (try? hit.dev.name()) ?? "unknown",
+                "deviceIndex": Int(hit.idx),
+                "receiverPID": String(format: "0x%04X", tr.productID),
+                "hidppVersion": "\(hit.ver.major).\(hit.ver.minor)",
+                "battery": b.map { ["percent": $0.percent, "millivolts": $0.millivolts as Any,
+                                    "charging": $0.charging, "source": $0.source] } as Any,
+                "dpi": (try? hit.dev.currentDPI()) as Any,
+                "reportRateHz": (try? hit.dev.reportRateHz()) as Any,
+                "features": ["onboardProfiles": hit.dev.has(0x8100),
+                             "rgb": hit.dev.has(0x8071) || hit.dev.has(0x8070),
+                             "smartShift": hit.dev.has(0x2110) || hit.dev.has(0x2111),
+                             "remapSpy": hit.dev.has(0x8110), "remapDivert": hit.dev.has(0x1b04)],
+                "otherDevicesOnline": devs.count - 1,
+                "queryMs": Int(Date().timeIntervalSince(t0) * 1000),
+            ])
+            return 0
         }
         let dev = hit.dev
         let name = (try? dev.name()) ?? "Unknown"
@@ -68,19 +91,111 @@ func cmdStatus() -> Int32 {
 }
 
 func cmdBattery() -> Int32 {
-    let t0 = Date()
     do {
         let tr = try ReceiverTransport.openFirst()
-        guard let hit = discover(tr).first else { print("no-device"); return 1 }
+        guard let hit = discover(tr).first else {
+            emitError(L("no awake device", "沒有醒著的裝置"), code: "no-awake-device")
+            return 1
+        }
         let b = try hit.dev.battery()
-        let volt = b.millivolts.map { String(format: " %.2fV", Double($0) / 1000) } ?? ""
-        print("\(b.percent)%\(volt) \(b.charging ? "charging" : "discharging")")
-        _ = t0
+        if jsonMode {
+            emitJSON(["percent": b.percent, "millivolts": b.millivolts as Any,
+                      "charging": b.charging, "source": b.source,
+                      "device": (try? hit.dev.name()) ?? "unknown"])
+        } else {
+            let volt = b.millivolts.map { String(format: " %.2fV", Double($0) / 1000) } ?? ""
+            print("\(b.percent)%\(volt) \(b.charging ? "charging" : "discharging")")
+        }
         return 0
     } catch {
-        print("❌ \(error)")
+        emitError("\(error)", code: "transport")
         return 2
     }
+}
+
+// MARK: - doctor：一鍵診斷（AI 安裝流程的第一站）
+
+func cmdDoctor() -> Int32 {
+    var checks: [[String: Any]] = []
+    var firstFix: String?
+    func add(_ name: String, _ ok: Bool?, _ detail: String, fix: String? = nil) {
+        checks.append(["check": name, "status": ok == nil ? "warn" : (ok! ? "ok" : "fail"),
+                       "detail": detail, "fix": fix as Any])
+        if ok == false, firstFix == nil { firstFix = fix }
+    }
+
+    var transport: ReceiverTransport?
+    do {
+        let tr = try ReceiverTransport.openFirst()
+        transport = tr
+        add("input-monitoring", true, "granted")
+        add("receiver", true, String(format: "046D:%04X", tr.productID))
+    } catch {
+        let msg = "\(error)"
+        if msg.contains("輸入監控") || msg.contains("Input Monitoring") || msg.contains("E00002E2") {
+            add("input-monitoring", false, msg,
+                fix: "System Settings > Privacy & Security > Input Monitoring > enable your terminal (or Nibble.app), then rerun")
+            add("receiver", nil, "skipped — cannot open HID without permission")
+        } else {
+            add("input-monitoring", nil, "unknown")
+            add("receiver", false, msg, fix: "Plug the Logitech USB receiver in (vendor 046D, HID usage page 0xFF00)")
+        }
+    }
+
+    if let tr = transport {
+        let devs = discover(tr, maxIndex: 3)
+        if let hit = devs.first {
+            let name = (try? hit.dev.name()) ?? "unknown"
+            add("device", true, "\(name) · HID++ \(hit.ver.major).\(hit.ver.minor) · index \(hit.idx)")
+            if let b = try? hit.dev.battery() {
+                add("battery", b.percent > 10 || b.charging, "\(b.percent)% \(b.charging ? "charging" : "discharging") (\(b.source))",
+                    fix: b.percent <= 10 && !b.charging ? "Charge the mouse" : nil)
+            }
+            let remapCapable = hit.dev.has(0x8110) || hit.dev.has(0x1b04)
+            add("remap-capable", remapCapable,
+                hit.dev.has(0x8110) ? "0x8110 MouseButtonSpy (G-series)" :
+                hit.dev.has(0x1b04) ? "0x1b04 ReprogControlsV4 (MX-series)" : "neither feature present")
+        } else {
+            add("device", false, "receiver present but no awake device", fix: "Move the mouse to wake it, then rerun")
+        }
+    }
+
+    let cfg = loadConfig()
+    let mapCount = cfg?.buttonMaps?.values.reduce(0) { $0 + $1.count } ?? 0
+    add("config", cfg != nil, cfg == nil ? "not created" : "\(bmConfigURL.path) · \(mapCount) button mapping(s)",
+        fix: cfg == nil ? "nibble config init" : nil)
+
+    if mapCount > 0 {
+        add("accessibility", axTrusted(), axTrusted() ? "granted" : "required to synthesize keystrokes",
+            fix: axTrusted() ? nil : "System Settings > Privacy & Security > Accessibility > enable the app running `nibble menubar`")
+    }
+
+    let menubarRunning = sh(["/usr/bin/pgrep", "-f", "nibble menubar"]) == 0
+        || sh(["/usr/bin/pgrep", "-f", "Nibble.app"]) == 0
+    add("menubar", mapCount > 0 ? menubarRunning : nil,
+        menubarRunning ? "running (remap engine host)" : "not running",
+        fix: (mapCount > 0 && !menubarRunning) ? "nibble menubar &   (or open Nibble.app)" : nil)
+
+    let replayInstalled = FileManager.default.fileExists(atPath: replayPlistURL.path)
+    add("login-replay", nil, replayInstalled ? "installed" : "not installed",
+        fix: replayInstalled ? nil : "nibble replay install")
+
+    let failed = checks.filter { $0["status"] as? String == "fail" }.count
+    if jsonMode {
+        emitJSON(["ok": failed == 0, "failed": failed, "checks": checks,
+                  "nextStep": firstFix as Any, "version": NIBBLE_VERSION])
+    } else {
+        print("Nibble doctor v\(NIBBLE_VERSION)\n")
+        for c in checks {
+            let s = c["status"] as? String ?? "?"
+            let icon = s == "ok" ? "✅" : s == "fail" ? "❌" : "•"
+            let name = (c["check"] as? String ?? "").padding(toLength: 18, withPad: " ", startingAt: 0)
+            print(" \(icon) \(name)\(c["detail"] as? String ?? "")")
+            if let fix = c["fix"] as? String { print("      → \(fix)") }
+        }
+        print("\n \(failed == 0 ? L("All good.", "一切正常。") : L("\(failed) issue(s) — fix the first arrow above and rerun.", "\(failed) 項有問題——照上面第一個箭頭修，然後重跑。"))")
+    }
+    return failed == 0 ? 0 : 1
 }
 
 /// 共用樣板：開接收器 → 找第一個醒著的裝置 → 執行
@@ -213,6 +328,14 @@ func cmdOnboard(_ args: [String]) -> Int32 {
         let info = try dev.onboardInfo()
         switch args.first ?? "info" {
         case "info":
+            if jsonMode {
+                emitJSON(["memoryModel": info.memoryModel, "profileFormat": info.profileFormat,
+                          "macroFormat": info.macroFormat, "profileCount": info.profileCount,
+                          "profileCountOOB": info.profileCountOOB, "buttonCount": info.buttonCount,
+                          "sectorCount": info.sectorCount, "sectorSize": info.sectorSize,
+                          "mode": "\(try dev.onboardMode())", "writable": false])
+                return 0
+            }
             print("""
             onboard-profiles（0x8100）
              memory model    \(info.memoryModel)
@@ -491,6 +614,26 @@ func cmdDump() -> Int32 {
 func cmdButtons() -> Int32 {
     withDevice { dev, _ in
         let name = (try? dev.name()) ?? "?"
+        if jsonMode {
+            let saved = loadConfig()?.buttonMaps?[name] ?? [:]
+            var list: [[String: Any]] = []
+            if dev.has(0x8110) {
+                let n = try dev.buttonSpyCount()
+                for i in 0..<n {
+                    let key = "G\(i + 1)"
+                    list.append(["id": key, "index": i, "remappable": i >= 2,
+                                 "action": saved[key].map { ["type": $0.type, "keys": $0.keys as Any, "action": $0.action as Any] } as Any])
+                }
+            } else if dev.has(0x1b04) {
+                for c in try dev.controls() {
+                    let key = HIDPP.cidNames[c.cid] ?? String(format: "CID 0x%04X", c.cid)
+                    list.append(["id": key, "cid": String(format: "0x%04X", c.cid), "remappable": c.divertable,
+                                 "action": saved[key].map { ["type": $0.type, "keys": $0.keys as Any, "action": $0.action as Any] } as Any])
+                }
+            }
+            emitJSON(["device": name, "path": dev.has(0x8110) ? "0x8110" : "0x1b04", "buttons": list])
+            return 0
+        }
         // 路線二：G 系（0x8110 MouseButtonSpy）——G 滑鼠沒有 0x1b04
         if !dev.has(0x1b04), dev.has(0x8110) {
             let n = try dev.buttonSpyCount()

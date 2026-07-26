@@ -36,6 +36,7 @@ Button remapping additionally needs **Accessibility** permission (to synthesize 
 |---|---|
 | `nibble status` | Overview: link, battery, DPI, report rate, feature flags |
 | `nibble battery` | One line, script-friendly: `50% 3.85V charging` |
+| `nibble doctor` | Diagnose permissions, device, config, engine — each failure prints its fix. **Start here if anything is wrong.** |
 | `nibble dump` | Enumerate all HID++ features (diagnostic) |
 | `nibble dpi [50-25600]` | Get / set DPI, verified by read-back |
 | `nibble rate [125\|250\|500\|1000]` | Get / set report rate in Hz |
@@ -55,6 +56,10 @@ Button remapping additionally needs **Accessibility** permission (to synthesize 
 
 Debug: `NIBBLE_DEBUG=1 nibble <cmd>` prints raw HID++ packets.
 Exit codes: `0` ok · `1` no awake device or value not applied · `2` transport/protocol error · `64` usage.
+
+**For scripts and agents:** `--json` works on every read command (`status`, `battery`, `dump`, `buttons`, `onboard info`, `doctor`, `version`). Errors also emit JSON: `{"error": "...", "code": "no-awake-device"}`. `doctor --json` returns `{"ok": bool, "failed": n, "checks": [...], "nextStep": "<command or setting to fix first>"}` — the fastest path from "it doesn't work" to a concrete fix.
+
+The UI follows the system language: English by default, Chinese when the system is set to Chinese.
 
 ## Config file `~/.config/nibble.json`
 
@@ -79,9 +84,9 @@ Omitted keys are left untouched.
 
 Two equivalent paths — CLI `nibble remap`, or the **Buttons** tab in `nibble ui`.
 
-The button list is enumerated from the device itself, so any Logitech mouse populates it without per-model artwork. To identify a physical button, click **按實體鍵定位 / press-to-identify** and press it — the matching row highlights. Then edit the row to assign a keystroke (`cmd+shift+4`), a system action, or disable it.
+The button list is enumerated from the device itself, so any Logitech mouse populates it without per-model artwork. Click **Press to identify** and press a physical button — its row highlights. Then edit the row: record a keystroke by actually pressing it, pick a system action, or disable the button. Right-click a row to clear its mapping.
 
-Mappings are stored per device name in `buttonMaps` and executed by `nibble menubar`; after editing, use the menu bar's **重新載入改鍵引擎 / reload engine** item (or restart the menu bar).
+Mappings are stored per device name under `buttonMaps` and executed by the menu bar app, which watches the config file and reloads automatically when you save.
 
 ## Behavior model
 

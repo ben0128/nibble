@@ -16,7 +16,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     var onStatus: ((String) -> Void)?
     private let table = NSTableView()
     private let hintLabel = NSTextField(labelWithString: "")
-    private let learnButton = NSButton(title: "🎯 按實體鍵定位", target: nil, action: nil)
+    private let learnButton = NSButton(title: L("🎯 Press to identify", "🎯 按實體鍵定位"), target: nil, action: nil)
     private var rows: [ButtonRow] = []
     private var deviceName = "unknown"
     private var learning = false
@@ -41,6 +41,15 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         table.doubleAction = #selector(editSelected)
         table.target = self
 
+        let ctx = NSMenu()
+        let editItem = NSMenuItem(title: L("Edit…", "編輯…"), action: #selector(editSelected), keyEquivalent: "")
+        editItem.target = self
+        let clearItem = NSMenuItem(title: L("Clear mapping", "清除映射"), action: #selector(clearSelected), keyEquivalent: "")
+        clearItem.target = self
+        ctx.addItem(editItem)
+        ctx.addItem(clearItem)
+        table.menu = ctx
+
         let scroll = NSScrollView()
         scroll.documentView = table
         scroll.hasVerticalScroller = true
@@ -51,13 +60,14 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
         learnButton.target = self
         learnButton.action = #selector(toggleLearn)
-        let editBtn = NSButton(title: "編輯選取的按鍵…", target: self, action: #selector(editSelected))
+        let editBtn = NSButton(title: L("Edit selected…", "編輯選取的按鍵…"), target: self, action: #selector(editSelected))
         let row = NSStackView(views: [learnButton, editBtn])
         row.spacing = 8
 
         hintLabel.font = .systemFont(ofSize: 11)
         hintLabel.textColor = .secondaryLabelColor
-        hintLabel.stringValue = "改鍵由 menubar 常駐執行；G1/G2 不可改（防鎖死）"
+        hintLabel.stringValue = L("Remaps run in the menu bar app · right-click a row to clear · G1/G2 locked",
+                                     "改鍵由選單列常駐執行 · 右鍵可清除映射 · G1/G2 不可改（防鎖死）")
 
         let stack = NSStackView(views: [scroll, row, hintLabel])
         stack.orientation = .vertical
@@ -85,7 +95,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             if dev.has(0x8110) {
                 let n = try dev.buttonSpyCount()
                 for i in 0..<n {
-                    out.append(ButtonRow(index: i, name: "G\(i + 1)" + (i == 0 ? "（左鍵）" : i == 1 ? "（右鍵）" : ""),
+                    out.append(ButtonRow(index: i, name: "G\(i + 1)" + (i == 0 ? L(" (left)", "（左鍵）") : i == 1 ? L(" (right)", "（右鍵）") : ""),
                                          remappable: i >= 2, action: saved["G\(i + 1)"]))
                 }
             } else if dev.has(0x1b04) {
@@ -97,7 +107,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             }
             rows = out
             table.reloadData()
-            onStatus?("\(deviceName) · \(rows.count) 顆按鍵（裝置自我列舉）")
+            onStatus?(L("\(deviceName) · \(rows.count) buttons (enumerated from device)", "\(deviceName) · \(rows.count) 顆按鍵（裝置自我列舉）"))
         } catch {
             rows = []
             table.reloadData()
@@ -117,10 +127,10 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             if let a = r.action {
                 text = a.type == "keys" ? "⌨ \(a.keys ?? "")" : a.type == "system" ? "⚙ \(a.action ?? "")" : "🚫 停用"
             } else {
-                text = r.remappable ? "（預設）" : "（系統保留）"
+                text = r.remappable ? L("(default)", "（預設）") : L("(system)", "（系統保留）")
             }
         default:
-            text = r.remappable ? "可改鍵" : "—"
+            text = r.remappable ? L("remappable", "可改鍵") : "—"
         }
         let label = NSTextField(labelWithString: text)
         label.font = highlighted == row ? .boldSystemFont(ofSize: 12) : .systemFont(ofSize: 12)
@@ -144,22 +154,22 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
                 prevMask = 0
                 try dev.buttonSpyStart()
                 tr.onReport = { [weak self] p in self?.handleSpy(p) }
-                onStatus?("按滑鼠上的任一顆鍵——對應的列會高亮（順便驗證位序是否正確）")
+                onStatus?(L("Press any mouse button — its row will highlight", "按滑鼠上的任一顆鍵——對應的列會高亮（順便驗證位序）"))
             } else if dev.has(0x1b04), let fi = try dev.featureIndex(of: 0x1b04) {
                 // MX 路徑：暫時 divert 所有可 divert 的鍵來聽事件，停止時全部還原
                 spyIdx = fi
                 divertedForLearn = (try dev.controls()).filter(\.divertable).map(\.cid)
                 for cid in divertedForLearn { try? dev.setDivert(cid: cid, on: true) }
                 tr.onReport = { [weak self] p in self?.handleDivertedEvent(p) }
-                onStatus?("按滑鼠上的任一顆鍵——對應的列會高亮（定位期間該鍵暫不作用）")
+                onStatus?(L("Press any mouse button — its row will highlight (buttons are inert while identifying)", "按滑鼠上的任一顆鍵——對應的列會高亮（定位期間按鍵暫不作用）"))
             } else {
-                onStatus?("此裝置不支援按鍵定位")
+                onStatus?(L("This device does not support identify", "此裝置不支援按鍵定位"))
                 return
             }
             spyDev = dev
             spyTransport = tr
             learning = true
-            learnButton.title = "⏹ 停止定位"
+            learnButton.title = L("⏹ Stop", "⏹ 停止定位")
         } catch {
             onStatus?("❌ \(error)")
         }
@@ -175,8 +185,8 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         spyDev = nil
         spyTransport = nil
         learning = false
-        learnButton.title = "🎯 按實體鍵定位"
-        onStatus?("定位結束")
+        learnButton.title = L("🎯 Press to identify", "🎯 按實體鍵定位")
+        onStatus?(L("Identify stopped", "定位結束"))
     }
 
     /// MX 路徑事件：payload 是目前按住的 CID 清單
@@ -219,29 +229,44 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
     // MARK: 改鍵彈窗
 
+    @objc private func clearSelected() {
+        let sel = table.clickedRow >= 0 ? table.clickedRow : table.selectedRow
+        guard sel >= 0, sel < rows.count else { return }
+        guard rows[sel].action != nil else {
+            onStatus?(L("\(rows[sel].name) has no mapping", "\(rows[sel].name) 沒有映射"))
+            return
+        }
+        save(nil, for: sel)
+    }
+
     @objc private func editSelected() {
         let sel = table.selectedRow
-        guard sel >= 0, sel < rows.count else { onStatus?("先選一列，或用「按實體鍵定位」"); return }
+        guard sel >= 0, sel < rows.count else { onStatus?(L("Select a row, or use press-to-identify", "先選一列，或用「按實體鍵定位」")); return }
         let r = rows[sel]
-        guard r.remappable else { onStatus?("\(r.name) 不可改（系統保留／防鎖死）"); return }
+        guard r.remappable else { onStatus?(L("\(r.name) is locked (system button)", "\(r.name) 不可改（系統保留／防鎖死）")); return }
         presentEditor(for: sel)
     }
 
     private func presentEditor(for rowIndex: Int) {
         let r = rows[rowIndex]
         let alert = NSAlert()
-        alert.messageText = "改鍵：\(r.name)"
-        alert.informativeText = "選擇動作類型，儲存後於 menubar 生效"
+        alert.messageText = L("Remap \(r.name)", "改鍵：\(r.name)")
+        alert.informativeText = L("Applies as soon as you save — the menu bar reloads automatically.",
+                                  "儲存後立即生效——選單列會自動重新載入")
 
-        let typePopup = NSPopUpButton(frame: NSRect(x: 0, y: 62, width: 300, height: 26))
-        typePopup.addItems(withTitles: ["快捷鍵", "系統動作", "停用這顆鍵", "還原預設"])
-        let keysField = NSTextField(frame: NSRect(x: 0, y: 30, width: 300, height: 24))
-        keysField.placeholderString = "例：cmd+shift+4 / ctrl+left / f13"
-        let systemPopup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 300, height: 26))
+        let typePopup = NSPopUpButton(frame: NSRect(x: 0, y: 64, width: 320, height: 26))
+        typePopup.addItems(withTitles: [L("Keystroke", "快捷鍵"), L("System action", "系統動作"),
+                                        L("Disable this button", "停用這顆鍵"), L("Restore default", "還原預設")])
+        let recorder = KeyRecorderView(frame: NSRect(x: 0, y: 30, width: 320, height: 26))
+        let systemPopup = NSPopUpButton(frame: NSRect(x: 0, y: 30, width: 320, height: 26))
         systemPopup.addItems(withTitles: SystemAction.allCases.map(\.rawValue))
+        let hint = NSTextField(labelWithString: "")
+        hint.frame = NSRect(x: 0, y: 4, width: 320, height: 18)
+        hint.font = .systemFont(ofSize: 11)
+        hint.textColor = .secondaryLabelColor
 
         switch r.action?.type {
-        case "keys": typePopup.selectItem(at: 0); keysField.stringValue = r.action?.keys ?? ""
+        case "keys": typePopup.selectItem(at: 0); recorder.combo = r.action?.keys
         case "system":
             typePopup.selectItem(at: 1)
             if let a = r.action?.action { systemPopup.selectItem(withTitle: a) }
@@ -249,22 +274,41 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         default: typePopup.selectItem(at: 0)
         }
 
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 92))
+        // 依類型只顯示相關控制項——不要讓使用者同時看到不相干的欄位
+        func syncVisibility() {
+            let idx = typePopup.indexOfSelectedItem
+            recorder.isHidden = idx != 0
+            systemPopup.isHidden = idx != 1
+            switch idx {
+            case 0: hint.stringValue = L("Esc clears the recording", "Esc 可清除已錄製的組合")
+            case 1: hint.stringValue = L("app:Name also works, e.g. app:Safari", "也可用 app:名稱，例如 app:Safari")
+            case 2: hint.stringValue = L("The button stops doing anything", "這顆鍵將完全無作用")
+            default: hint.stringValue = L("Hands the button back to the mouse", "把這顆鍵交還給滑鼠原生行為")
+            }
+        }
+        let observer = TypeChangeObserver { syncVisibility() }
+        typePopup.target = observer
+        typePopup.action = #selector(TypeChangeObserver.changed)
+        syncVisibility()
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 94))
         container.addSubview(typePopup)
-        container.addSubview(keysField)
+        container.addSubview(recorder)
         container.addSubview(systemPopup)
+        container.addSubview(hint)
         alert.accessoryView = container
-        alert.addButton(withTitle: "儲存並套用")
-        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: L("Save", "儲存"))
+        alert.addButton(withTitle: L("Cancel", "取消"))
+        alert.window.initialFirstResponder = recorder
 
         guard alert.runModal() == .alertFirstButtonReturn else { return }
+        _ = observer   // 讓 observer 活到 modal 結束
 
         var action: ButtonAction?
         switch typePopup.indexOfSelectedItem {
         case 0:
-            let combo = keysField.stringValue.trimmingCharacters(in: .whitespaces)
-            guard !combo.isEmpty, parseCombo(combo) != nil else {
-                onStatus?("⚠️ 快捷鍵解析失敗：\(combo)")
+            guard let combo = recorder.combo, parseCombo(combo) != nil else {
+                onStatus?(L("⚠️ No key combination recorded", "⚠️ 沒有錄到快捷鍵"))
                 return
             }
             action = ButtonAction(type: "keys", keys: combo, action: nil)
@@ -278,11 +322,18 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         save(action, for: rowIndex)
     }
 
+    /// NSPopUpButton 的 target 必須是 NSObject；用小物件轉接 closure
+    private final class TypeChangeObserver: NSObject {
+        let handler: () -> Void
+        init(_ handler: @escaping () -> Void) { self.handler = handler }
+        @objc func changed() { handler() }
+    }
+
     private func save(_ action: ButtonAction?, for rowIndex: Int) {
         var cfg = loadConfig() ?? BMConfig()
         var maps = cfg.buttonMaps ?? [:]
         var devMap = maps[deviceName] ?? [:]
-        let key = rows[rowIndex].name.components(separatedBy: "（").first ?? rows[rowIndex].name
+        let key = rows[rowIndex].name.components(separatedBy: CharacterSet(charactersIn: "（ ")).first ?? rows[rowIndex].name
         if let action { devMap[key] = action } else { devMap.removeValue(forKey: key) }
         maps[deviceName] = devMap.isEmpty ? nil : devMap
         cfg.buttonMaps = maps
@@ -290,10 +341,10 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             try saveConfig(cfg)
             rows[rowIndex].action = action
             table.reloadData()
-            let desc = action.map { $0.type == "keys" ? ($0.keys ?? "") : $0.type == "system" ? ($0.action ?? "") : "停用" } ?? "預設"
-            onStatus?("✓ \(key) → \(desc)（已存檔；menubar 選單點「重新載入改鍵引擎」生效）")
+            let desc = action.map { $0.type == "keys" ? ($0.keys ?? "") : $0.type == "system" ? ($0.action ?? "") : L("disabled", "停用") } ?? L("default", "預設")
+            onStatus?(L("✓ \(key) → \(desc) · saved, menu bar reloads automatically", "✓ \(key) → \(desc)（已存檔，選單列會自動重新載入）"))
         } catch {
-            onStatus?("❌ 存檔失敗：\(error)")
+            onStatus?(L("❌ save failed: \(error)", "❌ 存檔失敗：\(error)"))
         }
     }
 }
