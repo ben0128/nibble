@@ -6,6 +6,21 @@
 //
 // 不用 XCTest：那會帶進 SwiftPM 與一堆建置產物，違背這個專案的零依賴前提。
 // `make test` 直接編譯本檔＋Sources（排除 main.swift）成獨立執行檔。
+//
+// 這份清單經過突變測試篩過一遍：把實作逐一改壞（76 種單點改動），看哪些斷言會叫。
+// 叫不出來的就不是在保護任何東西，已經刪掉——共三類：
+//   1. 測 Codable／JSONEncoder 而不是我們的程式（「缺少的欄位會是 nil」、
+//      encode 完再 decode 值還在——那是標準庫的對稱性，不是這個專案的性質）
+//   2. 測測試自己的佈置（「測試打得開鎖檔」）
+//   3. 被同一個區塊裡更強的斷言完全覆蓋的
+// 還修了一個「名字寫得像在保護、其實沒有」的：邊界斷言接在已經響過的閂鎖後面問，
+// 擋住它的是 fired 旗標而不是門檻比較，所以把門檻放寬的改動照樣活著。
+//
+// 每個會 throw 的區塊都包了 catch：一個回歸不該讓整個程序 trap——那樣它後面的區塊
+// 全部不會跑，而且看不出是哪一項壞了。（突變測試就是這樣先被蒙住四個斷言的。）
+//
+// 已知測不到的：saveConfig 的 .atomic。單一程序的功能測試觀察不到「寫入中途斷電
+// 會留下原檔」，那個旗標是手動驗證的。刻意留著這個缺口，而不是假裝有守住。
 import Foundation
 
 // MARK: - 極簡斷言工具
@@ -91,11 +106,13 @@ do {
     let tr = MockTransport()
     let dev = HIDPPDevice(transport: tr, index: 1, swid: 0x0A)
     tr.queued = [reply(1, 0x00, fn: 1, swid: 0x0A, [4, 2, 0xAA])]
-    let ver = try dev.ping()
-    expectEqual(ver.major, 4, "ping decodes major version")
-    expectEqual(ver.minor, 2, "ping decodes minor version")
-    expectEqual(tr.sent.first?[0], 1, "request carries the device index")
-    expectEqual(tr.sent.first?[2], (1 << 4) | 0x0A, "request carries fn<<4 | swid")
+    do {
+        let ver = try dev.ping()
+        expectEqual(ver.major, 4, "ping decodes major version")
+        expectEqual(ver.minor, 2, "ping decodes minor version")
+        expectEqual(tr.sent.first?[0], 1, "request carries the device index")
+        expectEqual(tr.sent.first?[2], (1 << 4) | 0x0A, "request carries fn<<4 | swid")
+    } catch { expect(false, "ping round trip threw: \(error)") }
 }
 
 // 這是「跨程序串話」那個 bug 的回歸測試：別的程序用別的 swId，回應不該被我們認領
@@ -148,11 +165,13 @@ do {
         reply(1, 0x00, fn: 0, swid: 0x0A, [0x06, 0, 0]),          // getFeature(0x1001) → index 6
         reply(1, 0x06, fn: 0, swid: 0x0A, [0x0E, 0xE7, 0x90]),    // 0x0EE7 = 3815 mV，flags 0x90
     ]
-    let b = try dev.battery()
-    expectEqual(b.source, "0x1001", "G-series battery uses the voltage feature")
-    expectEqual(b.millivolts, 3815, "voltage decodes big-endian")
-    expect(b.charging, "flags bit 7 means charging")
-    expect(b.percent > 0 && b.percent < 100, "percent comes from the curve")
+    do {
+        let b = try dev.battery()
+        expectEqual(b.source, "0x1001", "G-series battery uses the voltage feature")
+        expectEqual(b.millivolts, 3815, "voltage decodes big-endian")
+        expect(b.charging, "flags bit 7 means charging")
+        expect(b.percent > 0 && b.percent < 100, "percent comes from the curve")
+    } catch { expect(false, "0x1001 battery read threw: \(error)") }
 }
 
 do {
@@ -163,10 +182,12 @@ do {
         reply(1, 0x00, fn: 0, swid: 0x0A, [0x07, 0, 0]),          // 0x1004 → index 7
         reply(1, 0x07, fn: 1, swid: 0x0A, [55, 0, 1]),            // 55%、充電中
     ]
-    let b = try dev.battery()
-    expectEqual(b.source, "0x1004", "falls back to the unified battery feature")
-    expectEqual(b.percent, 55, "percent read directly")
-    expect(b.millivolts == nil, "unified battery reports no voltage")
+    do {
+        let b = try dev.battery()
+        expectEqual(b.source, "0x1004", "falls back to the unified battery feature")
+        expectEqual(b.percent, 55, "percent read directly")
+        expect(b.millivolts == nil, "unified battery reports no voltage")
+    } catch { expect(false, "0x1004 battery fallback threw: \(error)") }
 }
 
 // feature index 查過就該快取，不要每次都重問
@@ -183,6 +204,7 @@ do {
 
 section("config encoding")
 do {
+  do {
     let json = """
     {"dpi":1600,"reportRateHz":1000,"rgb":"cycle",
      "buttonMaps":{"G502":{"G7":{"type":"keys","keys":"cmd+c"},
@@ -198,13 +220,15 @@ do {
     let round = try JSONDecoder().decode(BMConfig.self, from: try JSONEncoder().encode(cfg))
     expectEqual(round.buttonMaps?["G502"]?["G8"]?.keys, "cmd+c, 150ms, cmd+v", "macro survives a round trip")
     expectEqual(round.rgb, "cycle", "lighting survives a round trip")
+  } catch { expect(false, "config decode threw: \(error)") }
 }
 
 do {
     // 舊設定檔沒有 buttonMaps 欄位，也必須能讀
-    let cfg = try JSONDecoder().decode(BMConfig.self, from: Data(#"{"dpi":800}"#.utf8))
-    expectEqual(cfg.dpi, 800, "legacy config without buttonMaps still decodes")
-    expect(cfg.buttonMaps == nil, "missing buttonMaps is nil, not an error")
+    do {
+        let cfg = try JSONDecoder().decode(BMConfig.self, from: Data(#"{"dpi":800}"#.utf8))
+        expectEqual(cfg.dpi, 800, "legacy config without buttonMaps still decodes")
+    } catch { expect(false, "legacy config decode threw: \(error)") }
 }
 
 // MARK: - 低電量通知門檻（設定檔是人會手改的，所以不信任裡面的數字）
@@ -233,15 +257,6 @@ do {
     expectEqual(lowBatteryThreshold(cfg), lowBatteryRange.lowerBound, "the lower bound itself is accepted")
     cfg.lowBatteryPercent = lowBatteryRange.upperBound
     expectEqual(lowBatteryThreshold(cfg), lowBatteryRange.upperBound, "the upper bound itself is accepted")
-
-    // 新欄位不能把既有內容擠掉——這是舊版覆寫式存檔踩過的坑
-    var withMaps = BMConfig()
-    withMaps.buttonProfiles = ["Default": ["G502": ["G7": ButtonAction(type: "keys", keys: "cmd+c", action: nil)]]]
-    withMaps.lowBatteryNotify = true
-    withMaps.lowBatteryPercent = 25
-    let round = try JSONDecoder().decode(BMConfig.self, from: try JSONEncoder().encode(withMaps))
-    expectEqual(round.lowBatteryPercent, 25, "threshold survives a round trip")
-    expectEqual(round.buttonProfiles?["Default"]?["G502"]?.count, 1, "mappings survive alongside the new keys")
 }
 
 // MARK: - 低電量閂鎖：一次充放電只響一次，但改門檻／充電／開關都要重新武裝
@@ -274,7 +289,15 @@ do {
 do {
     var l = LowBatteryLatch()
     expect(l.shouldFire(percent: 15, charging: false, limit: 15), "the boundary itself fires")
-    expect(!l.shouldFire(percent: 16, charging: false, limit: 15), "one above stays quiet")
+}
+
+do {
+    // 一定要用全新的閂鎖：接在「已經響過」後面問這件事，是 fired 旗標在擋，
+    // 不是門檻比較在擋——把門檻放寬成 limit + 5 的變異體就這樣活了下來
+    var l = LowBatteryLatch()
+    expect(!l.shouldFire(percent: 16, charging: false, limit: 15), "one above the threshold never fires")
+    expect(!l.shouldFire(percent: 20, charging: false, limit: 15), "well above it stays quiet too")
+    expect(l.shouldFire(percent: 15, charging: false, limit: 15), "…and it is still armed when it does drop")
 }
 
 // MARK: - 設定檔寫入：絕不能弄丟不相關的鍵（這個專案最嚴重的失敗模式）
@@ -290,6 +313,7 @@ do {
         try? FileManager.default.removeItem(at: tmp)
     }
 
+  do {
     var cfg = BMConfig()
     cfg.dpi = 1600
     cfg.buttonProfiles = ["Gaming": ["G502": ["G7": ButtonAction(type: "keys", keys: "cmd+c", action: nil)]]]
@@ -368,6 +392,7 @@ do {
     } catch {
         expect(false, "symlinked config write (threw: \(error))")
     }
+  } catch { expect(false, "config write path threw unexpectedly: \(error)") }
 }
 
 // MARK: - 選單列存活探測（跨程序判斷，靠 flock 而不是比對程序名）
@@ -390,9 +415,9 @@ do {
 
     // flock 綁在 open file description 上，所以同程序另開一個 fd 也會衝突——
     // 這正是設定視窗（選單列的子程序）能正確偵測到父程序的原因
+    // 這兩行是佈置，不是斷言：失敗的話下一個 expect 自己會報，不需要替測試自己記一筆
     let held = open(tmp.path, O_WRONLY)
-    expect(held >= 0, "test can open the lock file")
-    expect(flock(held, LOCK_EX | LOCK_NB) == 0, "test can take the lock")
+    flock(held, LOCK_EX | LOCK_NB)
     expect(menuBarRunning(), "a held lock reads as running, even from the holding process")
     flock(held, LOCK_UN)
     close(held)
@@ -428,7 +453,6 @@ do {
     // 舊設定檔（只有 buttonMaps）必須照常運作，不能因為導入 profile 就變空
     let legacy = decode(#"{"buttonMaps":{"G502":{"G7":\#(act)}}}"#)
     expectEqual(activeButtonMaps(legacy)["G502"]?.count, 1, "legacy buttonMaps still resolve")
-    expectEqual(currentProfileName(legacy), "Default", "legacy config reports the Default profile")
     expectEqual(profileNames(legacy), ["Default"], "legacy config lists one profile")
 
     let two = decode("""
@@ -438,8 +462,12 @@ do {
     """)
     expectEqual(activeButtonMaps(two)["G502"]?.count, 2, "the active profile's map is the one used")
     expectEqual(currentProfileName(two), "Gaming", "active profile is reported")
-    expectEqual(profileNames(two).first, "Default", "Default always sorts first")
     expectEqual(profileNames(two).count, 2, "both profiles are listed")
+
+    // 「Default 永遠排第一」是一條規則，不是字母順序的巧合。用 {Default, Gaming} 測不出來——
+    // D 本來就在 G 前面，把規則整條刪掉也照樣通過。要一個字母序排在 Default 之前的名字。
+    let sorted3 = decode(#"{"buttonProfiles":{"Gaming":{},"Aim":{},"Default":{}}}"#)
+    expectEqual(profileNames(sorted3), ["Default", "Aim", "Gaming"], "Default sorts first, then alphabetical")
 
     // 懸空的 activeProfile 不該讓所有映射消失
     let dangling = decode("""
