@@ -278,7 +278,7 @@
 <span class="t-line"><span class="p">$</span> <span class="c">nibble status</span></span>
 <span class="t-line o"><span class="k">device</span>    <span class="v">G502 LIGHTSPEED · receiver 046D:C539</span></span>
 <span class="t-line o"><span class="k">protocol</span>  <span class="v">HID++ 4.2 · link ok</span></span>
-<span class="t-line o"><span class="k">battery</span>   <span class="v">50% · 3.85 V · charging</span></span>
+<span class="t-line o"><span class="k">battery</span>   <span class="v">63% · 3.92 V · charging</span></span>
 <span class="t-line o"><span class="k">dpi</span>       <span class="v">1600</span></span>
 <span class="t-line o"><span class="k">rate</span>      <span class="v">1000 Hz</span></span>
 <span class="t-line o"><span class="k">mode</span>      <span class="v">host</span></span>
@@ -286,8 +286,25 @@
 <span class="t-line"><span class="p">$</span> <span class="c">nibble dpi 3200</span></span>
 <span class="t-line o"><span class="ok">dpi 3200 ✓</span>  <span>read back from device</span></span>
 <span class="t-line gap"></span>
+<span class="t-line"><span class="p">$</span> <span class="c">nibble rate</span></span>
+<span class="t-line o"><span class="v">rate 1000 Hz</span> (supported: 1000/500/250/125 Hz)</span>
+<span class="t-line gap"></span>
 <span class="t-line"><span class="p">$</span> <span class="c">nibble battery</span></span>
-<span class="t-line o">50% 3.85V charging</span>
+<span class="t-line o">63% 3.92V charging</span>
+<span class="t-line gap"></span>
+<span class="t-line"><span class="p">$</span> <span class="c">nibble doctor</span></span>
+<span class="t-line o">Nibble doctor v1.1.0</span>
+<span class="t-line gap"></span>
+<span class="t-line o"> <span class="ok">✅</span> <span class="k">input-monitoring</span>  granted</span>
+<span class="t-line o"> <span class="ok">✅</span> <span class="k">receiver</span>          046D:C539</span>
+<span class="t-line o"> <span class="ok">✅</span> <span class="k">device</span>            G502 LIGHTSPEED · HID++ 4.2</span>
+<span class="t-line o"> <span class="ok">✅</span> <span class="k">battery</span>           63% charging (0x1001)</span>
+<span class="t-line o"> <span class="ok">✅</span> <span class="k">remap-capable</span>     0x8110 MouseButtonSpy</span>
+<span class="t-line o"> <span class="ok">✅</span> <span class="k">config</span>            ~/.config/nibble.json · 2 maps</span>
+<span class="t-line o"> •  <span class="k">menubar</span>           running (remap engine)</span>
+<span class="t-line o"> •  <span class="k">login-replay</span>      installed</span>
+<span class="t-line gap"></span>
+<span class="t-line o"> <span class="ok">All good.</span></span>
 <span class="t-line"><span class="p">$</span> <span class="cursor"></span></span></pre>
       </div>
     </div>
