@@ -196,11 +196,13 @@ func cmdDoctor() -> Int32 {
         emitJSON(["ok": failed == 0, "failed": failed, "checks": checks,
                   "nextStep": firstFix as Any, "version": NIBBLE_VERSION])
     } else {
+        // 欄寬取最長檢查名，新增檢查項不必回頭改字面值
+        let width = (checks.compactMap { ($0["check"] as? String)?.count }.max() ?? 16) + 2
         print("Nibble doctor v\(NIBBLE_VERSION)\n")
         for c in checks {
             let s = c["status"] as? String ?? "?"
             let icon = s == "ok" ? "✅" : s == "fail" ? "❌" : "•"
-            let name = (c["check"] as? String ?? "").padding(toLength: 21, withPad: " ", startingAt: 0)
+            let name = (c["check"] as? String ?? "").padding(toLength: width, withPad: " ", startingAt: 0)
             print(" \(icon) \(name)\(c["detail"] as? String ?? "")")
             if let fix = c["fix"] as? String { print("      → \(fix)") }
         }

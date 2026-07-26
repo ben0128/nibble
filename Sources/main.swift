@@ -1,7 +1,7 @@
 // main.swift — 入口與 argv 解析（零依賴，手寫解析）
 import Foundation
 
-let NIBBLE_VERSION = "1.2.0"
+let NIBBLE_VERSION = "1.2.1"
 
 var rawArgs = Array(CommandLine.arguments.dropFirst())
 if let i = rawArgs.firstIndex(of: "--json") {

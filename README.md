@@ -113,7 +113,7 @@ Mappings are stored per device name under `buttonMaps` and executed by the menu 
 
 ## Development
 
-`make app` signs the bundle with a self-signed identity named `Nibble Dev` if one exists in your keychain, falling back to ad-hoc. This matters: ad-hoc signatures change their cdhash on every rebuild, so macOS treats each build as a new app and **drops the Accessibility grant**. With a stable identity the grant survives rebuilds. To create one:
+`make app` signs the bundle with a self-signed identity named `Nibble Dev` if one exists in your keychain, falling back to ad-hoc. Either way, **expect to re-grant Accessibility after rebuilding the app**: macOS binds the grant to the cdhash for any certificate it cannot chain to a trusted root, and a self-signed certificate is not one. Only a Developer ID certificate makes the grant survive rebuilds. The self-signed identity is still worth having — it produces a proper sealed bundle rather than an ad-hoc one — and is created like this:
 
 ```sh
 /usr/bin/openssl req -x509 -newkey rsa:2048 -keyout /tmp/ns.key -out /tmp/ns.crt -days 3650 -nodes \

@@ -12,7 +12,9 @@ private func acquireMenuBarLock() -> Bool {
     let fd = open(dir.appendingPathComponent("menubar.lock").path, O_CREAT | O_WRONLY, 0o644)
     guard fd >= 0 else { return true }   // 拿不到鎖檔就別擋使用者
     if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+        let blocked = errno == EWOULDBLOCK   // 其他 errno 代表檔案系統不支援等狀況，別擋使用者
         close(fd)
+        if !blocked { return true }
         return false
     }
     return true   // 故意不關 fd：鎖跟著程序生命週期，退出時由系統釋放
@@ -20,7 +22,13 @@ private func acquireMenuBarLock() -> Bool {
 
 func runMenuBar() -> Int32 {
     guard acquireMenuBarLock() else {
+        // 從 Finder 啟動時沒有終端機可印訊息——直接把既有那個實例叫到前面才看得出發生什麼事
         print("Nibble menu bar is already running.")
+        if let id = Bundle.main.bundleIdentifier {
+            let others = NSRunningApplication.runningApplications(withBundleIdentifier: id)
+                .filter { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
+            others.first?.activate(options: [.activateIgnoringOtherApps])
+        }
         return 0
     }
     let app = NSApplication.shared
@@ -47,6 +55,8 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var settingsProcess: Process?
     private var engineNeedsAX = false
     private var engineRetryScheduled = false
+    private var engineRetryDelay: TimeInterval = 4
+    private var axPrompted = false
     private var configWatch: DispatchSourceFileSystemObject?
     private var flashWork: DispatchWorkItem?
     private var batteryPercent: Int?
@@ -200,7 +210,9 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 return
             }
             let needsAX = devMap.values.contains { $0.type == "keys" || $0.type == "system" }
-            if needsAX && !axTrusted(promptIfNeeded: true) {
+            // 只在第一次跳系統授權對話框，之後靜靜重試就好
+            if needsAX && !axTrusted(promptIfNeeded: !axPrompted) {
+                axPrompted = true
                 // 這是最容易靜默失敗的一步：整列做成可點的捷徑，並寫進狀態檔讓 doctor 看得到
                 engineNeedsAX = true
                 engineItem.title = "Remapping: ⚠️ needs Accessibility — click here"
@@ -221,6 +233,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             try eng.start()
             engine = eng   // engine 持有 dev+transport → 事件流常駐
+            engineRetryDelay = 4
             engineItem.title = "Remapping: ✓ \(eng.mappingCount) active"
             EngineState.writeStatus(["active": true, "reason": "running", "mappings": eng.mappingCount,
                                "axTrusted": axTrusted(), "device": devName,
@@ -237,7 +250,9 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func scheduleEngineRetry() {
         guard !engineRetryScheduled else { return }
         engineRetryScheduled = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+        let delay = engineRetryDelay
+        engineRetryDelay = min(engineRetryDelay * 2, 120)   // 退避到 2 分鐘：永久性失敗不該一直喚醒 USB
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             self?.engineRetryScheduled = false
             guard let self, self.engine == nil else { return }
             self.startEngine()
@@ -266,6 +281,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         engine?.stop()   // 還原 spy remap 表——退出後滑鼠回到原生行為
+        if let p = settingsProcess, p.isRunning { p.terminate() }
     }
 
     private func makeItem(_ title: String, _ sel: Selector, key: String = "") -> NSMenuItem {

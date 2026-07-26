@@ -12,31 +12,40 @@ enum EngineState {
     /// 狀態鍵每次整組換掉——用合併的話舊值會殘留（例如成功後還掛著上一次的 fix）
     private static let statusKeys = ["active", "reason", "mappings", "axTrusted", "device", "path", "fix"]
 
+    private static let queue = DispatchQueue(label: "com.ben0128.nibble.enginestate")
+
     static func writeStatus(_ fields: [String: Any]) {
-        var payload = read()
-        for k in statusKeys { payload.removeValue(forKey: k) }
-        for (k, v) in fields { payload[k] = v }
-        payload["updated"] = ISO8601DateFormatter().string(from: Date())
-        persist(payload)
+        queue.async {
+            var payload = readUnlocked()
+            for k in statusKeys { payload.removeValue(forKey: k) }
+            for (k, v) in fields { payload[k] = v }
+            payload["updated"] = ISO8601DateFormatter().string(from: Date())
+            persistUnlocked(payload)
+        }
     }
 
+    /// 事件寫入走非同步＋節流：按鍵合成是熱路徑，不該每次點擊都做一輪 JSON 讀改寫
     static func write(_ fields: [String: Any]) {
-        var payload = read()
-        for (k, v) in fields { payload[k] = v }
-        payload["updated"] = ISO8601DateFormatter().string(from: Date())
-        persist(payload)
+        queue.async {
+            var payload = readUnlocked()
+            for (k, v) in fields { payload[k] = v }
+            payload["updated"] = ISO8601DateFormatter().string(from: Date())
+            persistUnlocked(payload)
+        }
     }
 
-    private static func persist(_ payload: [String: Any]) {
+    private static func persistUnlocked(_ payload: [String: Any]) {
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         if let d = try? JSONSerialization.data(withJSONObject: payload,
                                                options: [.prettyPrinted, .sortedKeys]) {
-            try? d.write(to: url)
+            try? d.write(to: url, options: .atomic)   // 換檔而非就地覆寫，讀者不會看到半份檔案
         }
     }
 
-    static func read() -> [String: Any] {
+    static func read() -> [String: Any] { queue.sync { readUnlocked() } }
+
+    private static func readUnlocked() -> [String: Any] {
         guard let d = try? Data(contentsOf: url),
               let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return [:] }
         return o
@@ -145,6 +154,7 @@ final class RemapEngine: RemapEngineProtocol {
     private var patched: [UInt8] = []           // 我們寫入的表（重連重掛用）
     private var prevMask: UInt16 = 0
     private var lastLog = Date.distantPast
+    private var lastFiredLog = Date.distantPast
     private(set) var active = false
 
     init?(transport: ReceiverTransport, dev: HIDPPDevice, mappings: [Int: ButtonAction]) {
@@ -203,6 +213,8 @@ final class RemapEngine: RemapEngineProtocol {
         for bit in 0..<16 where newly & (1 << bit) != 0 {
             if let a = mappings[bit] {
                 performButtonAction(a)
+                guard Date().timeIntervalSince(lastFiredLog) > 0.5 else { continue }
+                lastFiredLog = Date()
                 EngineState.write([
                     "lastFiredButton": "G\(bit + 1)",
                     "lastFiredBit": bit,
