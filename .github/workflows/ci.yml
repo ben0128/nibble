@@ -61,7 +61,9 @@ jobs:
       - name: smoke — help exits 0, unknown command exits 64
         shell: pwsh
         run: |
-          ./target/release/nibble.exe help | Select-Object -First 1
+          # 不能用 Select-Object -First 1 或 > $null：前者提前終止管線把程序殺在半路、
+          # 後者在 dot-sourced script 裡不設 $LASTEXITCODE——Out-Null 是唯一誠實的消耗法
+          ./target/release/nibble.exe help | Out-Null
           $h = $LASTEXITCODE
           ./target/release/nibble.exe nosuchcommand | Out-Null
           $u = $LASTEXITCODE
