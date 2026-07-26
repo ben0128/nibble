@@ -1,78 +1,96 @@
 # Nibble 🖱️
 
-macOS 原生、單一執行檔、零依賴、預設零常駐的羅技滑鼠控制工具。
-Lightweight, native, zero-dependency Logitech mouse control for macOS — no Electron, no daemon, no account, no telemetry.
+Lightweight, zero-dependency Logitech mouse control for macOS. Single 256 KB binary. No daemon, no telemetry, no account.
 
-> **G HUB is a 4 GB install. Nibble is 224 KB.**
+> G HUB is a 4 GB install. Nibble is 256 KB.
 
-```
-$ nibble status
-Nibble v0.1.0 ── G502 LIGHTSPEED Wireless Gaming Mouse
-──────────────────────────────────────────────────────────
- link      HID++ 4.2 · receiver 046D:C539 · device #1
- battery   [#####.....] 46%  3.83V  charging ⚡  (0x1001)
- dpi       1600
- rate      1000 Hz
- features  onboard-profiles ✓ · rgb ✓ · smartshift ✗
-──────────────────────────────────────────────────────────
- 0 daemons · query 200 ms · peak RAM 7.2 MB
-```
+## Requirements
 
-## Build
+- macOS, Swift toolchain (`xcode-select --install`)
+- Logitech mouse on a USB receiver (Lightspeed/Unifying). Bluetooth-direct: not yet supported.
+- Tested: G502 LIGHTSPEED via receiver `046D:C539`, HID++ 4.2
 
-```
+## Install
+
+```sh
+git clone https://github.com/ben0128/nibble && cd nibble
 make
 ./nibble status
 ```
 
-首次執行：**系統設定 → 隱私權與安全性 → 輸入監控**，打開你的終端機後重跑。
+First run needs **Input Monitoring** permission: System Settings → Privacy & Security → Input Monitoring → enable your terminal app → re-run. Error `0xE00002E2` means this permission is missing. No restart needed after granting.
 
-## 指令
+## Commands
 
-| 指令 | 說明 |
+| Command | Effect |
 |---|---|
-| `nibble status` | 裝置總覽（連線、電池、DPI、回報率、feature 概況） |
-| `nibble battery` | 只印電池一行（適合腳本） |
-| `nibble dump` | HID++ feature 完整枚舉（診斷用） |
-| `nibble dpi [50–25600]` | 讀／寫 DPI（寫後回讀驗證） |
-| `nibble rate [Hz]` | 讀／寫回報率（onboard 模式會自動切 host） |
-| `nibble rgb off\|show` | 關燈省電（G502 LIGHTSPEED 官方續航 48h→60h）／看燈效槽 |
-| `nibble mode [host\|onboard]` | 板載↔軟體主導（模式旗標，斷電自動回復） |
-| `nibble wheel free\|ratchet` | 滾輪模式（MX 系限定，未實測） |
-| `nibble onboard info\|backup` | 板載記憶體資訊／全 sector 唯讀備份 |
-| `nibble config init\|show` | 以目前狀態建立／檢視 `~/.config/nibble.json` |
-| `nibble apply` | 套用設定檔（runtime 寫入，不碰 flash） |
-| `nibble replay install` | 登入時自動 `apply`（launchd 一次性，零常駐） |
-| `nibble menubar` | 選單列電量（opt-in 常駐，實測 9.2MB footprint） |
+| `nibble status` | Overview: link, battery, DPI, report rate, feature flags |
+| `nibble battery` | One line, script-friendly: `50% 3.85V charging` |
+| `nibble dump` | Enumerate all HID++ features (diagnostic) |
+| `nibble dpi [50-25600]` | Get / set DPI, verified by read-back |
+| `nibble rate [125\|250\|500\|1000]` | Get / set report rate in Hz |
+| `nibble rgb off\|show` | Lights off (power saving) / list zones and effects |
+| `nibble mode [host\|onboard]` | Get / set control-mode flag |
+| `nibble wheel free\|ratchet [threshold N]` | SmartShift, MX-series only (untested) |
+| `nibble onboard info\|backup` | Onboard memory info / read-only full dump |
+| `nibble config init\|show` | Create from current state / print `~/.config/nibble.json` |
+| `nibble apply` | Apply config file (runtime writes) |
+| `nibble replay install\|uninstall` | Auto-`apply` at login via one-shot launchd agent |
+| `nibble menubar` | Interactive menu bar: battery + DPI/rate/RGB controls (~15 MB resident, opt-in) |
+| `nibble ui` | Native settings window; quits when closed (zero resident) |
 
-`NIBBLE_DEBUG=1` 印出 HID++ 原始封包。
+Debug: `NIBBLE_DEBUG=1 nibble <cmd>` prints raw HID++ packets.
+Exit codes: `0` ok · `1` no awake device or value not applied · `2` transport/protocol error · `64` usage.
 
-**設計原則**：所有寫入都是 runtime（裝置 RAM），persist 一律 0，不碰板載 flash——
-滑鼠斷電回到原廠／板載狀態，`replay` 在登入時自動重放你的設定。
-板載記憶體只讀不寫（`onboard backup` = 逃生門），寫入功能待格式驗證後解凍。
+## Config file `~/.config/nibble.json`
 
-## 架構
-
-```
-Sources/
-├── HIDPP.swift      HIDPPCore 純協定層（不 import IOKit：可測試、可移植）
-├── Transport.swift  IOKit 傳輸層（IOHIDManager、report 收發）
-├── Commands.swift   指令層
-└── main.swift       入口與 argv 解析
+```json
+{ "dpi": 1600, "reportRateHz": 1000, "rgb": "off" }
 ```
 
-G 系列冷知識：電池不走一般的 0x1000/0x1004，走 **0x1001 BatteryVoltage**（回報電壓），
-百分比由內建 LiPo 放電曲線換算——這是多數 MX 系工具不支援 G 系列的原因之一。
+| Key | Type | Values |
+|---|---|---|
+| `dpi` | int | 50–25600 |
+| `reportRateHz` | int | 125 / 250 / 500 / 1000 |
+| `rgb` | string | `"off"` or `"keep"` |
+| `wheelMode` | string | `"free"` / `"ratchet"` (MX-series only) |
+| `wheelThreshold` | int | 1–254 |
 
-## Roadmap
+Omitted keys are left untouched.
 
-- [x] M0 — HID++ 通道驗證（ping／協定版本／電池電壓）
-- [x] M1 — 讀取組：`status` / `battery` / `dump`
-- [x] M2 — 寫入組：DPI／回報率／RGB off（runtime，不碰 flash）＋ `config`/`apply` ＋登入重放
-- [x] M3 — Onboard 板載記憶體：唯讀 `backup`（16 sectors 實測 OK；寫入凍結待格式驗證）
-- [x] M4 — Menu bar 電量（opt-in，AppKit，實測 9.2MB footprint）
-- [ ] M5 — 按鍵 divert 改鍵 → per-app profile → 手勢 → 巨集
-- [ ] M6 — 英文 README、Homebrew tap
+## Behavior model
+
+- All writes are **runtime** (device RAM, persist flag = 0). A power cycle reverts the mouse to its onboard profile — `nibble replay install` re-applies your config at login.
+- Report-rate and RGB writes require **host mode**; commands switch the mode flag automatically. The flag also reverts on power cycle.
+- Onboard flash (HID++ feature `0x8100`) is **read-only by design**. `onboard backup` dumps every sector to `~/.config/nibble/backups/` as `.bin` + `.json` metadata — your escape hatch is restoring factory settings via G HUB on any machine.
+- Zero resident processes unless you opt into `menubar`.
+
+## Troubleshooting
+
+| Symptom | Cause → fix |
+|---|---|
+| `0xE00002E2` on open | Input Monitoring not granted → grant to terminal app, re-run |
+| "no awake device" | Mouse asleep → move it, re-run |
+| HID++ error `0x02` on write | Onboard mode rejects it → handled by automatic host-mode fallback |
+| Receiver not found | Requires USB device with vendor `0x046D` + HID usage page `0xFF00` |
+| Writes send but no replies ever arrive | If hacking on the code: IOHIDManager must outlive the device object |
+
+## Architecture
+
+```
+Sources/HIDPP.swift           protocol core — no IOKit import (portable, testable)
+Sources/Transport.swift       IOKit HID transport (the only IOKit file)
+Sources/Commands.swift        CLI commands + shared UI helpers
+Sources/MenuBar.swift         interactive NSStatusItem menu (opt-in resident)
+Sources/SettingsWindow.swift  native AppKit settings panel (quits on close)
+Sources/main.swift            argv dispatch
+```
+
+Protocol notes for G-series: battery is `0x1001` BatteryVoltage (millivolts + LiPo curve), not `0x1000`/`0x1004`. Onboard sectors are 255 B (not 16-aligned) — read the tail with an overlapping read at `sectorSize-16`.
+
+## 中文速覽
+
+macOS 原生、零依賴的羅技滑鼠控制工具。指令見上表。首次執行：系統設定 → 隱私權與安全性 → 輸入監控 → 授權你的終端機。所有寫入皆為 runtime（斷電回復），`nibble replay install` 登入時自動重放；`nibble menubar` 是互動選單列，`nibble ui` 是關窗即退的原生設定面板。
 
 ## License
 

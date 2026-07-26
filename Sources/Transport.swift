@@ -50,6 +50,14 @@ public final class ReceiverTransport: HIDPPTransport {
         IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
     }
 
+    deinit {
+        // 長駐模式（menubar）會反覆開關 transport——不清乾淨會累積 kernel 資源
+        IOHIDDeviceUnscheduleFromRunLoop(device, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+        IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
+        IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+        inBuf.deallocate()
+    }
+
     private static let reportCB: IOHIDReportCallback = { ctx, _, _, _, reportID, ptr, len in
         guard let ctx = ctx else { return }
         let me = Unmanaged<ReceiverTransport>.fromOpaque(ctx).takeUnretainedValue()

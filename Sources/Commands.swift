@@ -391,6 +391,48 @@ func cmdReplay(_ args: [String]) -> Int32 {
     }
 }
 
+// MARK: - UI 共用助手（menubar 與 settings window 共用）
+
+/// 先試偏好索引（0.4s 快 ping），失敗才掃 1–3
+func uiOpenDevice(preferred: UInt8) throws -> (dev: HIDPPDevice, index: UInt8) {
+    let tr = try ReceiverTransport.openFirst()
+    let d = HIDPPDevice(transport: tr, index: preferred)
+    if (try? d.ping(timeout: 0.4)) != nil { return (d, preferred) }
+    guard let hit = discover(tr, maxIndex: 3).first else { throw HIDPPError.timeout }
+    return (hit.dev, hit.idx)
+}
+
+/// runtime 寫入被 onboard 模式擋下時切 host 重試（旗標，斷電自動回復）
+func uiHostFallback(_ dev: HIDPPDevice, _ write: () throws -> Void) throws {
+    do { try write() } catch {
+        guard dev.has(0x8100), (try? dev.onboardMode()) == .onboard else { throw error }
+        try dev.setOnboardMode(.host)
+        try write()
+    }
+}
+
+/// 套用燈效（off/cycle/breathing），回傳成功套用的 zone 數
+func uiSetRGB(_ dev: HIDPPDevice, kind: String) throws -> Int {
+    let targetID: UInt16 = kind == "off" ? 0x0000 : (kind == "cycle" ? 0x0003 : 0x000A)
+    if dev.has(0x8100), (try? dev.onboardMode()) == .onboard { try dev.setOnboardMode(.host) }
+    var applied = 0
+    for z in 0..<(try dev.rgbZoneCount()) {
+        if let slot = dev.rgbZoneEffects(zone: UInt8(z)).first(where: { $0.effectID == targetID }) {
+            try dev.rgbSetZone(zone: UInt8(z), slot: slot.slot)
+            applied += 1
+        }
+    }
+    return applied
+}
+
+/// 以目前裝置狀態＋UI 記住的 RGB 狀態寫設定檔
+func uiSaveConfig(_ dev: HIDPPDevice, rgb: String?) throws {
+    let cfg = BMConfig(dpi: try? dev.currentDPI(), reportRateHz: try? dev.reportRateHz(),
+                       rgb: rgb == "off" ? "off" : "keep", wheelMode: nil, wheelThreshold: nil)
+    let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+    try (try enc.encode(cfg)).write(to: bmConfigURL)
+}
+
 @discardableResult
 func sh(_ args: [String]) -> Int32 {
     let p = Process()
