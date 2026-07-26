@@ -105,6 +105,29 @@ func runProtocolFixtures(_ file: String) {
                 let feature = UInt16((op["feature"] as! NSNumber).intValue)
                 _ = try dev.featureIndex(of: feature)
                 _ = try dev.featureIndex(of: feature)
+            case "name_get":
+                expectEqual(try dev.name(), expectVal["name"] as? String ?? "?", "\(name): name")
+            case "dpi_set":
+                let got = try dev.setDPI((op["dpi"] as! NSNumber).intValue)
+                expectEqual(got, (expectVal["dpi"] as! NSNumber).intValue, "\(name): read-back dpi")
+            case "rate_get":
+                expectEqual(try dev.reportRateHz(), (expectVal["rate_hz"] as! NSNumber).intValue, "\(name): rate")
+            case "rates_supported":
+                let want = (expectVal["rates"] as! [NSNumber]).map(\.intValue)
+                expectEqual(try dev.supportedReportRatesHz(), want, "\(name): supported rates")
+            case "rate_set":
+                let got = try dev.setReportRateHz((op["hz"] as! NSNumber).intValue)
+                expectEqual(got, (expectVal["rate_hz"] as! NSNumber).intValue, "\(name): read-back rate")
+            case "rate_set_hostfallback":
+                // 這條向量釘住整段 fallback 舞步：err 0x02 → 讀模式 → 切 host → 重試 → 回讀
+                var got = 0
+                try uiHostFallback(dev) { got = try dev.setReportRateHz((op["hz"] as! NSNumber).intValue) }
+                expectEqual(got, (expectVal["rate_hz"] as! NSNumber).intValue, "\(name): rate after fallback")
+            case "onboard_mode_get":
+                expectEqual(Int(try dev.onboardMode().rawValue), (expectVal["mode"] as! NSNumber).intValue, "\(name): mode")
+            case "rgb_apply":
+                let applied = try uiSetRGB(dev, kind: op["effect"] as? String ?? "off")
+                expectEqual(applied, (expectVal["applied"] as! NSNumber).intValue, "\(name): zones applied")
             default:
                 expect(false, "\(name): unknown op kind")
             }

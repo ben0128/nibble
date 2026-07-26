@@ -216,6 +216,148 @@ impl<T: Transport> Device<T> {
         let r = self.call(0x2201, 2, &[0])?;
         Ok((u16::from(r[1]) << 8) | u16::from(r[2]))
     }
+
+    /// 寫 DPI 後回讀驗證，回傳裝置實際生效值（fixtures 的期望值就是回讀值——
+    /// 直接把請求值回吐的實作會被向量抓到）
+    pub fn set_dpi(&mut self, dpi: u16) -> Result<u16, Error> {
+        self.call(0x2201, 3, &[0, (dpi >> 8) as u8, (dpi & 0xFF) as u8])?;
+        self.current_dpi()
+    }
+
+    /// DeviceNameType（0x0005）：fn0 給長度，fn1 以 16 bytes 一塊讀，最後過濾可列印 ASCII
+    pub fn name(&mut self) -> Result<String, Error> {
+        let count = self.call(0x0005, 0, &[])?[0] as usize;
+        if count == 0 {
+            return Ok("?".into());
+        }
+        let mut bytes: Vec<u8> = Vec::with_capacity(count);
+        while bytes.len() < count {
+            let chunk = self.call(0x0005, 1, &[bytes.len() as u8])?;
+            let want = (count - bytes.len()).min(16);
+            bytes.extend(chunk.iter().take(want));
+        }
+        Ok(bytes
+            .iter()
+            .filter(|&&b| (32..127).contains(&b))
+            .map(|&b| b as char)
+            .collect())
+    }
+
+    /// ReportRate（0x8060）fn1：回報「間隔毫秒」→ 換算 Hz
+    pub fn report_rate_hz(&mut self) -> Result<u16, Error> {
+        let ms = u16::from(self.call(0x8060, 1, &[])?[0]);
+        Ok(if ms > 0 { 1000 / ms } else { 0 })
+    }
+
+    /// fn0：支援的回報率 bitfield，bit n = 間隔 n+1 ms
+    pub fn supported_report_rates_hz(&mut self) -> Result<Vec<u16>, Error> {
+        let r = self.call(0x8060, 0, &[])?;
+        Ok((0u16..8)
+            .filter(|bit| r[0] & (1 << bit) != 0)
+            .map(|bit| 1000 / (bit + 1))
+            .collect())
+    }
+
+    /// fn2：寫間隔毫秒後回讀。寫入需要 host 模式——呼叫端配 with_host_fallback 使用
+    pub fn set_report_rate_hz(&mut self, hz: u16) -> Result<u16, Error> {
+        let ms = (1000 / hz.max(125)).clamp(1, 8) as u8;
+        self.call(0x8060, 2, &[ms])?;
+        self.report_rate_hz()
+    }
+
+    /// OnboardProfiles（0x8100）fn2：模式旗標。1 = onboard、2 = host
+    pub fn onboard_mode(&mut self) -> Result<u8, Error> {
+        Ok(self.call(0x8100, 2, &[])?[0])
+    }
+
+    /// fn1：切換模式旗標（非 sector 寫入；斷電回復 onboard）
+    pub fn set_onboard_mode(&mut self, mode: u8) -> Result<(), Error> {
+        self.call(0x8100, 1, &[mode]).map(|_| ())
+    }
+
+    /// RGB feature：0x8071 優先，退回 0x8070
+    pub fn rgb_feature_id(&mut self) -> Result<u16, Error> {
+        if self.feature_index(0x8071)?.is_some() {
+            return Ok(0x8071);
+        }
+        if self.feature_index(0x8070)?.is_some() {
+            return Ok(0x8070);
+        }
+        Err(Error::FeatureUnsupported(0x8070))
+    }
+
+    pub fn rgb_zone_count(&mut self) -> Result<u8, Error> {
+        let feat = self.rgb_feature_id()?;
+        Ok(self.call(feat, 0, &[])?[0])
+    }
+
+    /// 列出 zone 的效果槽（掃到第一個失敗的 slot 為止——與 Swift 版同一個停止條件）
+    pub fn rgb_zone_effects(&mut self, zone: u8) -> Vec<(u8, u16)> {
+        let Ok(feat) = self.rgb_feature_id() else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for slot in 0u8..16 {
+            match self.call(feat, 2, &[zone, slot]) {
+                Ok(r) => out.push((slot, (u16::from(r[2]) << 8) | u16::from(r[3]))),
+                Err(_) => break,
+            }
+        }
+        out
+    }
+
+    /// 設 zone 效果。params 補滿 16 bytes——尾端的 persist byte 因此固定 0（只寫 RAM），
+    /// 而 16 bytes 的 params 也讓這一發必然走 long report
+    pub fn rgb_set_zone(&mut self, zone: u8, slot: u8) -> Result<(), Error> {
+        let mut p = vec![zone, slot];
+        p.resize(16, 0);
+        let feat = self.rgb_feature_id()?;
+        self.call(feat, 3, &p).map(|_| ())
+    }
+}
+
+/// 寫入被 onboard 模式拒絕（err 0x02）時：讀模式 → 切 host → 重試。
+/// 與 Swift 的 uiHostFallback 同一段舞步，fixtures 的 hostfallback 向量逐 byte 釘住它。
+pub fn with_host_fallback<T: Transport, R>(
+    dev: &mut Device<T>,
+    mut op: impl FnMut(&mut Device<T>) -> Result<R, Error>,
+) -> Result<R, Error> {
+    match op(dev) {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            if dev.has(0x8100) && dev.onboard_mode() == Ok(1) {
+                dev.set_onboard_mode(2)?;
+                op(dev)
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+/// 套用燈效（off/cycle/breathing），回傳成功套用的 zone 數——與 Swift uiSetRGB 同呼叫順序：
+/// 先看 0x8100 模式（onboard 就切 host），再逐 zone 找目標效果的 slot
+pub fn apply_rgb<T: Transport>(dev: &mut Device<T>, effect: &str) -> Result<u8, Error> {
+    let target: u16 = match effect {
+        "off" => 0x0000,
+        "cycle" => 0x0003,
+        _ => 0x000A, // breathing
+    };
+    if dev.has(0x8100) && dev.onboard_mode() == Ok(1) {
+        dev.set_onboard_mode(2)?;
+    }
+    let mut applied = 0u8;
+    for zone in 0..dev.rgb_zone_count()? {
+        if let Some(&(slot, _)) = dev
+            .rgb_zone_effects(zone)
+            .iter()
+            .find(|&&(_, id)| id == target)
+        {
+            dev.rgb_set_zone(zone, slot)?;
+            applied += 1;
+        }
+    }
+    Ok(applied)
 }
 
 /// G502 實測校準的 LiPo 放電曲線——與 Swift 版逐點、逐運算相同

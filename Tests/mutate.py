@@ -49,6 +49,12 @@ MUTATIONS = [
   "return Battery(millivolts: nil, percent: Int(r[1]), charging: r[2] != 0, source: \"0x1000\")"),
  ("feature-cache-disabled", "HIDPP.swift", "if let hit = featureCache[feature] { return hit == 0 ? nil : hit }",
   "if let hit = featureCache[feature], hit == 200 { return hit == 0 ? nil : hit }"),
+ # ---- M2 control surface (fixtures: hidpp-control.json) ----
+ ("rate-ms-formula", "HIDPP.swift", "return ms > 0 ? 1000 / ms : 0", "return ms > 0 ? 500 / ms : 0"),
+ ("dpi-set-echoes-request", "HIDPP.swift", "params: [sensor, UInt8((dpi >> 8) & 0xFF), UInt8(dpi & 0xFF)])\n        return try currentDPI()",
+  "params: [sensor, UInt8((dpi >> 8) & 0xFF), UInt8(dpi & 0xFF)])\n        return dpi"),
+ ("hostfallback-skips-retry", "Commands.swift", "try dev.setOnboardMode(.host)\n        try write()", "try dev.setOnboardMode(.host)\n        throw error"),
+ ("rgb-off-wrong-target", "Commands.swift", 'let targetID: UInt16 = kind == "off" ? 0x0000 :', 'let targetID: UInt16 = kind == "off" ? 0x0001 :'),
  # ---- discovery / engine selection (only reachable since the transport decoupling) ----
  ("discover-no-wired-fallback", "Commands.swift", "    if out.isEmpty {\n        let d = HIDPPDevice(transport: tr, index: 0xFF)",
   "    if false {\n        let d = HIDPPDevice(transport: tr, index: 0xFF)"),

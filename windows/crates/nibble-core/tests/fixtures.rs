@@ -148,6 +148,69 @@ fn run_protocol(file: &str) {
                     .and_then(|_| dev.feature_index(feature))
                     .map(|_| ())
             }
+            "name_get" => dev.name().map(|n| {
+                assert_eq!(n, expect["name"].as_str().unwrap(), "{name}: name");
+            }),
+            "dpi_set" => dev.set_dpi(op["dpi"].as_u64().unwrap() as u16).map(|d| {
+                assert_eq!(
+                    u64::from(d),
+                    expect["dpi"].as_u64().unwrap(),
+                    "{name}: read-back dpi"
+                );
+            }),
+            "rate_get" => dev.report_rate_hz().map(|hz| {
+                assert_eq!(
+                    u64::from(hz),
+                    expect["rate_hz"].as_u64().unwrap(),
+                    "{name}: rate"
+                );
+            }),
+            "rates_supported" => dev.supported_report_rates_hz().map(|rates| {
+                let want: Vec<u64> = expect["rates"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_u64().unwrap())
+                    .collect();
+                let got: Vec<u64> = rates.iter().map(|&r| u64::from(r)).collect();
+                assert_eq!(got, want, "{name}: supported rates");
+            }),
+            "rate_set" => dev
+                .set_report_rate_hz(op["hz"].as_u64().unwrap() as u16)
+                .map(|hz| {
+                    assert_eq!(
+                        u64::from(hz),
+                        expect["rate_hz"].as_u64().unwrap(),
+                        "{name}: read-back rate"
+                    );
+                }),
+            "rate_set_hostfallback" => {
+                let hz = op["hz"].as_u64().unwrap() as u16;
+                nibble_core::hidpp::with_host_fallback(&mut dev, |d| d.set_report_rate_hz(hz)).map(
+                    |got| {
+                        assert_eq!(
+                            u64::from(got),
+                            expect["rate_hz"].as_u64().unwrap(),
+                            "{name}: rate after fallback"
+                        );
+                    },
+                )
+            }
+            "onboard_mode_get" => dev.onboard_mode().map(|m| {
+                assert_eq!(
+                    u64::from(m),
+                    expect["mode"].as_u64().unwrap(),
+                    "{name}: mode"
+                );
+            }),
+            "rgb_apply" => nibble_core::hidpp::apply_rgb(&mut dev, op["effect"].as_str().unwrap())
+                .map(|applied| {
+                    assert_eq!(
+                        u64::from(applied),
+                        expect["applied"].as_u64().unwrap(),
+                        "{name}: zones applied"
+                    );
+                }),
             k => panic!("{name}: unknown op kind {k}"),
         };
 
@@ -187,6 +250,11 @@ fn battery_vectors() {
 #[test]
 fn dpi_vectors() {
     run_protocol("hidpp-dpi.json");
+}
+
+#[test]
+fn control_surface_vectors() {
+    run_protocol("hidpp-control.json");
 }
 
 #[test]

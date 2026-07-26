@@ -193,6 +193,11 @@ runProtocolFixtures("hidpp-battery.json")
 section("dpi decoding")
 runProtocolFixtures("hidpp-dpi.json")
 
+// MARK: - M2 指令面（name / DPI 寫入回讀 / 回報率 / onboard 旗標 / host-fallback / RGB）
+
+section("control surface")
+runProtocolFixtures("hidpp-control.json")
+
 // MARK: - 設定檔：合併行為（曾經整份覆寫，弄丟改鍵表）
 
 section("config encoding")

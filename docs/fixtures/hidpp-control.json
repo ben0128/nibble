@@ -1,0 +1,98 @@
+{
+  "comment": "M2 control-surface vectors: device name (0x0005 chunked read + ASCII filter), DPI write with read-back (0x2201 fn3+fn2 — the expectation is the READ-BACK value, so an implementation that echoes the request fails), report rate (0x8060: fn1 get in interval-ms, fn0 supported bitfield where bit n = interval n+1 ms, fn2 set), the onboard-mode flag (0x8100 fn2/fn1), the full host-mode fallback dance (write rejected with HID++ err 0x02 while onboard -> read mode -> set host -> retry -> read back), and RGB apply (0x8071 falls back to 0x8070; zone slot scan stops at the first failing slot; set-zone params pad to 16 bytes so the trailing persist byte is 0 = RAM only, and 16 params force a long report).",
+  "cases": [
+    {
+      "name": "device name reads in 16-byte chunks and filters to printable ASCII",
+      "swid": 10, "device": 1,
+      "op": { "kind": "name_get" },
+      "exchanges": [
+        { "request": [1, 0, 10, 0, 5], "prefer_long": false, "response": [1, 0, 10, 3, 0, 0] },
+        { "request": [1, 3, 10], "prefer_long": false, "response": [1, 3, 10, 5, 0, 0] },
+        { "request": [1, 3, 26, 0], "prefer_long": false, "response": [1, 3, 26, 71, 53, 48, 50, 88] }
+      ],
+      "expect": { "name": "G502X" }
+    },
+    {
+      "name": "setDPI writes then reports the device's read-back, not the request",
+      "swid": 10, "device": 1,
+      "op": { "kind": "dpi_set", "dpi": 1600 },
+      "exchanges": [
+        { "request": [1, 0, 10, 34, 1], "prefer_long": false, "response": [1, 0, 10, 5, 0, 0] },
+        { "request": [1, 5, 58, 0, 6, 64], "prefer_long": false, "response": [1, 5, 58, 0, 6, 64] },
+        { "request": [1, 5, 42, 0], "prefer_long": false, "response": [1, 5, 42, 0, 12, 128] }
+      ],
+      "expect": { "dpi": 3200 }
+    },
+    {
+      "name": "report rate reads as 1000/interval-ms",
+      "swid": 10, "device": 1,
+      "op": { "kind": "rate_get" },
+      "exchanges": [
+        { "request": [1, 0, 10, 128, 96], "prefer_long": false, "response": [1, 0, 10, 6, 0, 0] },
+        { "request": [1, 6, 26], "prefer_long": false, "response": [1, 6, 26, 1, 0, 0] }
+      ],
+      "expect": { "rate_hz": 1000 }
+    },
+    {
+      "name": "supported rates decode from the interval bitfield",
+      "swid": 10, "device": 1,
+      "op": { "kind": "rates_supported" },
+      "exchanges": [
+        { "request": [1, 0, 10, 128, 96], "prefer_long": false, "response": [1, 0, 10, 6, 0, 0] },
+        { "request": [1, 6, 10], "prefer_long": false, "response": [1, 6, 10, 139, 0, 0] }
+      ],
+      "expect": { "rates": [1000, 500, 250, 125] }
+    },
+    {
+      "name": "setReportRate writes the interval and reads back",
+      "swid": 10, "device": 1,
+      "op": { "kind": "rate_set", "hz": 500 },
+      "exchanges": [
+        { "request": [1, 0, 10, 128, 96], "prefer_long": false, "response": [1, 0, 10, 6, 0, 0] },
+        { "request": [1, 6, 42, 2], "prefer_long": false, "response": [1, 6, 42, 2, 0, 0] },
+        { "request": [1, 6, 26], "prefer_long": false, "response": [1, 6, 26, 2, 0, 0] }
+      ],
+      "expect": { "rate_hz": 500 }
+    },
+    {
+      "name": "a write rejected in onboard mode switches to host and retries",
+      "swid": 10, "device": 1,
+      "op": { "kind": "rate_set_hostfallback", "hz": 1000 },
+      "exchanges": [
+        { "request": [1, 0, 10, 128, 96], "prefer_long": false, "response": [1, 0, 10, 6, 0, 0] },
+        { "request": [1, 6, 42, 1], "prefer_long": false, "response": [1, 255, 6, 42, 2] },
+        { "request": [1, 0, 10, 129, 0], "prefer_long": false, "response": [1, 0, 10, 9, 0, 0] },
+        { "request": [1, 9, 42], "prefer_long": false, "response": [1, 9, 42, 1, 0, 0] },
+        { "request": [1, 9, 26, 2], "prefer_long": false, "response": [1, 9, 26, 2, 0, 0] },
+        { "request": [1, 6, 42, 1], "prefer_long": false, "response": [1, 6, 42, 1, 0, 0] },
+        { "request": [1, 6, 26], "prefer_long": false, "response": [1, 6, 26, 1, 0, 0] }
+      ],
+      "expect": { "rate_hz": 1000 }
+    },
+    {
+      "name": "the onboard-mode flag decodes",
+      "swid": 10, "device": 1,
+      "op": { "kind": "onboard_mode_get" },
+      "exchanges": [
+        { "request": [1, 0, 10, 129, 0], "prefer_long": false, "response": [1, 0, 10, 9, 0, 0] },
+        { "request": [1, 9, 42], "prefer_long": false, "response": [1, 9, 42, 2, 0, 0] }
+      ],
+      "expect": { "mode": 2 }
+    },
+    {
+      "name": "rgb off: 0x8071 falls back to 0x8070, slot scan stops at the failing slot, set pads to 16 (persist=0, long report)",
+      "swid": 10, "device": 1,
+      "op": { "kind": "rgb_apply", "effect": "off" },
+      "exchanges": [
+        { "request": [1, 0, 10, 129, 0], "prefer_long": false, "response": [1, 0, 10, 0, 0, 0] },
+        { "request": [1, 0, 10, 128, 113], "prefer_long": false, "response": [1, 0, 10, 0, 0, 0] },
+        { "request": [1, 0, 10, 128, 112], "prefer_long": false, "response": [1, 0, 10, 7, 0, 0] },
+        { "request": [1, 7, 10], "prefer_long": false, "response": [1, 7, 10, 1, 0, 0] },
+        { "request": [1, 7, 42, 0, 0], "prefer_long": false, "response": [1, 7, 42, 0, 0, 0, 0] },
+        { "request": [1, 7, 42, 0, 1], "prefer_long": false, "response": [1, 255, 7, 42, 3] },
+        { "request": [1, 7, 58, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "prefer_long": true, "response": [1, 7, 58, 0, 0] }
+      ],
+      "expect": { "applied": 1 }
+    }
+  ]
+}
