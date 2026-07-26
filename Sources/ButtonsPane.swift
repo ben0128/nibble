@@ -106,6 +106,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         scroll.autohidesScrollers = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
         scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 190).isActive = true
+        scroll.automaticallyAdjustsContentInsets = false   // 否則首列會被表頭切掉一截
 
         learnButton.target = self
         learnButton.action = #selector(toggleLearn)
@@ -127,26 +128,30 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
         let container = NSView()
         for v in [profileRow, scroll, learnButton, hintLabel, editor] { container.addSubview(v) }
+        // Profile 自成一條橫幅；下方才分左右兩欄，
+        // 編輯區與表格頂端對齊——先前錨在 profileRow 上，標題就跟 Profile 擠成一行
         NSLayoutConstraint.activate([
             profileRow.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
             profileRow.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
+            profileRow.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -14),
 
-            scroll.topAnchor.constraint(equalTo: profileRow.bottomAnchor, constant: 10),
+            scroll.topAnchor.constraint(equalTo: profileRow.bottomAnchor, constant: 12),
             scroll.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
-            scroll.widthAnchor.constraint(equalToConstant: 236),
+            scroll.trailingAnchor.constraint(equalTo: editor.leadingAnchor, constant: -18),
+            scroll.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),   // 隨視窗變寬
 
-            learnButton.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 8),
+            learnButton.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 10),
             learnButton.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
 
             hintLabel.topAnchor.constraint(equalTo: learnButton.bottomAnchor, constant: 8),
             hintLabel.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
-            hintLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
+            hintLabel.trailingAnchor.constraint(equalTo: scroll.trailingAnchor),
             hintLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
 
-            editor.topAnchor.constraint(equalTo: profileRow.topAnchor),
-            editor.leadingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: 16),
+            editor.topAnchor.constraint(equalTo: scroll.topAnchor),
             editor.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
-            editor.bottomAnchor.constraint(lessThanOrEqualTo: learnButton.bottomAnchor),
+            editor.widthAnchor.constraint(equalToConstant: 260),
+            editor.bottomAnchor.constraint(lessThanOrEqualTo: hintLabel.topAnchor, constant: -8),
         ])
         rebuildProfilePopup()
         updateEditor()
@@ -299,6 +304,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             rows = out
             table.reloadData()
             table.sizeLastColumnToFit()   // 撐滿捲動區，右側不留下看似空欄的縫隙
+            if table.selectedRow < 0 { table.scrollRowToVisible(0) }
             updateEditor()
             onStatus?("\(deviceName) · \(rows.count) buttons")
         } catch {
