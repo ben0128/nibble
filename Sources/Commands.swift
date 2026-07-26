@@ -38,7 +38,7 @@ func cmdStatus() -> Int32 {
         let name = (try? dev.name()) ?? "Unknown"
         let rule = String(repeating: "─", count: 58)
 
-        print("BenMouse v\(BENMOUSE_VERSION) ── \(name)")
+        print("Nibble v\(NIBBLE_VERSION) ── \(name)")
         print(rule)
         print(" link      HID++ \(hit.ver.major).\(hit.ver.minor) · receiver 046D:\(String(format: "%04X", tr.productID)) · device #\(hit.idx)")
         if let b = try? dev.battery() {
@@ -104,7 +104,7 @@ func cmdDPI(_ args: [String]) -> Int32 {
     withDevice { dev, _ in
         guard let arg = args.first else { print("dpi \(try dev.currentDPI())"); return 0 }
         guard let target = Int(arg), (50...25600).contains(target) else {
-            print("用法：benmouse dpi [50–25600]"); return 64
+            print("用法：nibble dpi [50–25600]"); return 64
         }
         var got = try dev.setDPI(target)
         if got != target, dev.has(0x8100), (try? dev.onboardMode()) == .onboard {
@@ -125,7 +125,7 @@ func cmdRate(_ args: [String]) -> Int32 {
             return 0
         }
         guard let hz = Int(arg), supported.isEmpty || supported.contains(hz) else {
-            print("用法：benmouse rate [\(supported.map(String.init).joined(separator: "|"))]"); return 64
+            print("用法：nibble rate [\(supported.map(String.init).joined(separator: "|"))]"); return 64
         }
         // 0x8060 寫入只在 host 模式被允許（onboard 模式回 err 0x02）——直接報錯也要走退路
         var got: Int
@@ -167,7 +167,7 @@ func cmdRGB(_ args: [String]) -> Int32 {
             }
             return 0
         default:
-            print("用法：benmouse rgb [off|show]"); return 64
+            print("用法：nibble rgb [off|show]"); return 64
         }
     }
 }
@@ -182,7 +182,7 @@ func cmdMode(_ args: [String]) -> Int32 {
         case "onboard":
             try dev.setOnboardMode(.onboard); print("mode \(try dev.onboardMode()) ✓")
         default:
-            print("用法：benmouse mode [host|onboard]"); return 64
+            print("用法：nibble mode [host|onboard]"); return 64
         }
         return 0
     }
@@ -195,11 +195,11 @@ func cmdWheel(_ args: [String]) -> Int32 {
         case "ratchet": _ = try dev.setWheel(freespin: false)
         case "threshold":
             guard let n = Int(args.dropFirst().first ?? ""), (1...254).contains(n) else {
-                print("用法：benmouse wheel threshold <1-254>"); return 64
+                print("用法：nibble wheel threshold <1-254>"); return 64
             }
             _ = try dev.setWheel(freespin: false, threshold: n)
         default:
-            print("用法：benmouse wheel [free|ratchet|threshold N]（MX 系限定，G502 無此功能）"); return 64
+            print("用法：nibble wheel [free|ratchet|threshold N]（MX 系限定，G502 無此功能）"); return 64
         }
         print("wheel ✓（注意：此功能尚未在實機驗證——MX Master 3 上線後補測）")
         return 0
@@ -227,7 +227,7 @@ func cmdOnboard(_ args: [String]) -> Int32 {
         case "backup":
             let ts = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "")
             let dir = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".config/benmouse/backups", isDirectory: true)
+                .appendingPathComponent(".config/nibble/backups", isDirectory: true)
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             var blob = Data()
             var unreadable: [Int] = []
@@ -271,7 +271,7 @@ func cmdOnboard(_ args: [String]) -> Int32 {
             print("✅ \(blob.count) bytes → \(bin.path)")
             return 0
         default:
-            print("用法：benmouse onboard [info|backup]（寫入功能凍結中——安全路線）"); return 64
+            print("用法：nibble onboard [info|backup]（寫入功能凍結中——安全路線）"); return 64
         }
     }
 }
@@ -287,7 +287,7 @@ struct BMConfig: Codable {
 }
 
 let bmConfigURL = FileManager.default.homeDirectoryForCurrentUser
-    .appendingPathComponent(".config/benmouse.json")
+    .appendingPathComponent(".config/nibble.json")
 
 func cmdConfig(_ args: [String]) -> Int32 {
     switch args.first ?? "show" {
@@ -303,19 +303,19 @@ func cmdConfig(_ args: [String]) -> Int32 {
         }
     case "show":
         guard let data = try? Data(contentsOf: bmConfigURL), let s = String(data: data, encoding: .utf8) else {
-            print("還沒有設定檔——先跑 benmouse config init"); return 1
+            print("還沒有設定檔——先跑 nibble config init"); return 1
         }
         print(s)
         return 0
     default:
-        print("用法：benmouse config [init|show]"); return 64
+        print("用法：nibble config [init|show]"); return 64
     }
 }
 
 func cmdApply() -> Int32 {
     guard let data = try? Data(contentsOf: bmConfigURL),
           let cfg = try? JSONDecoder().decode(BMConfig.self, from: data) else {
-        print("讀不到 \(bmConfigURL.path)——先跑 benmouse config init")
+        print("讀不到 \(bmConfigURL.path)——先跑 nibble config init")
         return 1
     }
     return withDevice { dev, _ in
@@ -350,10 +350,10 @@ func cmdApply() -> Int32 {
 // MARK: - 登入自動重放（launchd 一次性 agent，跑完即退，零常駐）
 
 let replayPlistURL = FileManager.default.homeDirectoryForCurrentUser
-    .appendingPathComponent("Library/LaunchAgents/com.ben0128.benmouse.replay.plist")
+    .appendingPathComponent("Library/LaunchAgents/com.ben0128.nibble.replay.plist")
 
 func cmdReplay(_ args: [String]) -> Int32 {
-    let label = "com.ben0128.benmouse.replay"
+    let label = "com.ben0128.nibble.replay"
     let uid = getuid()
     switch args.first ?? "status" {
     case "install":
@@ -367,8 +367,8 @@ func cmdReplay(_ args: [String]) -> Int32 {
             <key>ProgramArguments</key>
             <array><string>\(exe)</string><string>apply</string></array>
             <key>RunAtLoad</key><true/>
-            <key>StandardOutPath</key><string>/tmp/benmouse-replay.log</string>
-            <key>StandardErrorPath</key><string>/tmp/benmouse-replay.log</string>
+            <key>StandardOutPath</key><string>/tmp/nibble-replay.log</string>
+            <key>StandardErrorPath</key><string>/tmp/nibble-replay.log</string>
         </dict>
         </plist>
         """
@@ -376,7 +376,7 @@ func cmdReplay(_ args: [String]) -> Int32 {
         do { try plist.write(to: replayPlistURL, atomically: true, encoding: .utf8) }
         catch { print("❌ 寫不進 \(replayPlistURL.path)：\(error)"); return 2 }
         let rc = sh(["/bin/launchctl", "bootstrap", "gui/\(uid)", replayPlistURL.path])
-        print(rc == 0 ? "✅ 已安裝登入重放：每次登入自動 benmouse apply（跑完即退，零常駐）\n   plist：\(replayPlistURL.path)\n   ⚠️ 若移動 benmouse 執行檔，要重跑 replay install"
+        print(rc == 0 ? "✅ 已安裝登入重放：每次登入自動 nibble apply（跑完即退，零常駐）\n   plist：\(replayPlistURL.path)\n   ⚠️ 若移動 nibble 執行檔，要重跑 replay install"
                       : "⚠️ plist 已寫入但 launchctl bootstrap 回傳 \(rc)")
         return 0
     case "uninstall":
@@ -386,7 +386,7 @@ func cmdReplay(_ args: [String]) -> Int32 {
         return 0
     default:
         let installed = FileManager.default.fileExists(atPath: replayPlistURL.path)
-        print(installed ? "replay：已安裝（\(replayPlistURL.path)）" : "replay：未安裝（benmouse replay install）")
+        print(installed ? "replay：已安裝（\(replayPlistURL.path)）" : "replay：未安裝（nibble replay install）")
         return 0
     }
 }

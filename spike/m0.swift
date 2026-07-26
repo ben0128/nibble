@@ -1,4 +1,4 @@
-// m0.swift — BenMouse M0 spike
+// m0.swift — Nibble M0 spike
 // 目的：驗證從 macOS 直接用 HID++ 2.0 跟 G502 溝通這條路是通的。
 // 流程：找 Lightspeed 接收器 (046D:C539) 的 vendor collection (page 0xFF00)
 //       → ping 裝置索引 1 → 讀協定版本 → 讀電池 (0x1004，退回 0x1000)。
@@ -158,7 +158,7 @@ let reportCB: IOHIDReportCallback = { _, _, _, _, reportID, ptr, len in
 }
 
 // ---------- main ----------
-print("BenMouse M0 — HID++ spike\n")
+print("Nibble M0 — HID++ spike\n")
 let mgr = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
 IOHIDManagerSetDeviceMatching(mgr, [kIOHIDVendorIDKey: 0x046D, kIOHIDProductIDKey: 0xC539] as CFDictionary)
 let mo = IOHIDManagerOpen(mgr, IOOptionBits(kIOHIDOptionsTypeNone))

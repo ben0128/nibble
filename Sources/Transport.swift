@@ -13,7 +13,7 @@ public final class ReceiverTransport: HIDPPTransport {
     private let inBuf: UnsafeMutablePointer<UInt8>
     private var inbox: [[UInt8]] = []
     public let productID: Int
-    let debug = ProcessInfo.processInfo.environment["BENMOUSE_DEBUG"] != nil
+    let debug = ProcessInfo.processInfo.environment["NIBBLE_DEBUG"] != nil
 
     /// 找到第一個羅技 vendor collection（接收器或有線滑鼠）並開啟
     public static func openFirst() throws -> ReceiverTransport {
