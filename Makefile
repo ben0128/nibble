@@ -18,21 +18,45 @@ app: nibble
 	cp Resources/Info.plist $(APP)/Contents/Info.plist
 	cp nibble $(APP)/Contents/MacOS/nibble
 	printf 'APPL????' > $(APP)/Contents/PkgInfo
-	@xattr -cr $(APP)   # Finder 屬性會讓 codesign 拒簽（"detritus not allowed"）
-	@codesign --force --deep --sign "$(SIGN_ID)" $(APP) 2>/dev/null \
-		&& echo "signed with: $(SIGN_ID)" \
-		|| { codesign --force --deep --sign - $(APP) 2>/dev/null; \
-		     echo "signed ad-hoc"; }
+	@# Finder 會在背景把 com.apple.FinderInfo 加回剛建立的 bundle（這個 repo 在桌面上，
+	@# Finder 一直盯著），撞上就 codesign 拒簽。所以每次嘗試前重清屬性，失敗就重試。
+	@ERR=$$(mktemp); ok=""; \
+	for attempt in 1 2 3; do \
+		xattr -cr $(APP) 2>/dev/null; \
+		if codesign --force --deep --sign "$(SIGN_ID)" $(APP) 2>$$ERR; then \
+			echo "signed with: $(SIGN_ID)"; ok=1; break; \
+		fi; \
+		if codesign --force --deep --sign - $(APP) 2>>$$ERR; then \
+			echo "signed ad-hoc"; ok=1; break; \
+		fi; \
+		sleep 0.3; \
+	done; \
+	if [ -z "$$ok" ]; then echo "ERROR: codesign failed after 3 attempts:"; cat $$ERR; rm -f $$ERR; exit 1; fi; \
+	rm -f $$ERR
+	@# 不用 --strict：它會因為 Finder 隨時加回的 FinderInfo 而失敗，但那不影響執行。
+	@# 這裡要擋的是「根本沒簽到」——先前 stderr 被吃掉時就出過那種空殼 bundle。
+	@codesign --verify --deep $(APP) \
+		|| { echo "ERROR: $(APP) failed signature verification — refusing to ship a broken bundle"; exit 1; }
 	@echo "bundle: $$(du -sh $(APP) | cut -f1)"
 
 # 裝到 /Applications：路徑穩定，權限授權給這一份，repo 裡怎麼重建都不影響
 install-app: app
-	@pkill -f "$(APP)/Contents/MacOS/nibble" 2>/dev/null \
-		&& { echo "quit running Nibble"; sleep 1; } || true
+	@# 等程序真的結束再替換：睡固定秒數只是猜，太短會撞上「檔案使用中」，太長是白等
+	@RUNPAT="$(APP)/Contents/MacOS/nibble"; \
+	if pgrep -qf "$$RUNPAT"; then \
+		echo "quitting running Nibble…"; \
+		pkill -f "$$RUNPAT" || true; \
+		for i in $$(seq 1 40); do pgrep -qf "$$RUNPAT" || break; sleep 0.1; done; \
+		if pgrep -qf "$$RUNPAT"; then \
+			echo "still running after 4s — forcing"; \
+			pkill -9 -f "$$RUNPAT" || true; \
+			for i in $$(seq 1 20); do pgrep -qf "$$RUNPAT" || break; sleep 0.1; done; \
+		fi; \
+	fi
 	rm -rf "$(APP_DEST)/$(APP)"
 	ditto $(APP) "$(APP_DEST)/$(APP)"   # ditto 保留簽名封印，cp -R 會弄壞
-	@xattr -cr "$(APP_DEST)/$(APP)"     # 複製過程又會沾上 FinderInfo，清掉才過得了 --strict
-	@codesign --verify --deep --strict "$(APP_DEST)/$(APP)" && echo "installed & verified: $(APP_DEST)/$(APP)"
+	@xattr -cr "$(APP_DEST)/$(APP)" 2>/dev/null || true
+	@codesign --verify --deep "$(APP_DEST)/$(APP)" && echo "installed & verified: $(APP_DEST)/$(APP)"
 
 install: nibble
 	install -d $(PREFIX)/bin
