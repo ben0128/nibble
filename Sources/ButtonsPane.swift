@@ -47,13 +47,21 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     // MARK: 版面
 
     func makeView() -> NSView {
-        table.addTableColumn(withTitle("button", "col-btn", 78))
-        table.addTableColumn(withTitle("action", "col-act", 150))
+        // 兩欄平分寬度：button 固定夠放最長的鍵名，action 吃掉剩下全部，
+        // 右側不留空白（否則看起來像有第三個空欄位）
+        let btnCol = withTitle("button", "col-btn", 92)
+        btnCol.minWidth = 80
+        btnCol.maxWidth = 110
+        table.addTableColumn(btnCol)
+        let actCol = withTitle("action", "col-act", 140)
+        actCol.minWidth = 100
+        table.addTableColumn(actCol)
         table.delegate = self
         table.dataSource = self
         table.rowHeight = 22
         table.usesAlternatingRowBackgroundColors = true
-        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle   // action 欄補滿剩餘寬度
+        table.style = .plain
         table.target = self
 
         let ctx = NSMenu()

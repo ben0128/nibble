@@ -12,7 +12,7 @@ func runSettingsUI(initialTab: String? = nil) -> Int32 {
     return 0
 }
 
-final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTabViewDelegate {
     private var window: NSWindow!
     private let deviceLabel = NSTextField(labelWithString: "Detecting…")
     private let batteryLabel = NSTextField(labelWithString: "")
@@ -32,6 +32,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private var lastRGB: String? = lastKnownRGB()
     private let buttonsPane = ButtonsPane()
     private var headerTimer: Timer?
+    private var statusClear: DispatchWorkItem?
     var initialTab: String?
     private static let rateValues = [125, 250, 500, 1000]
     private static let rgbKinds = ["off", "cycle", "breathing"]
@@ -101,6 +102,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         if let box = generalStack.views.first(where: { $0 is NSBox }) as? NSBox { box.boxType = .separator }
 
         let tabs = NSTabView()
+        tabs.delegate = self
         tabs.translatesAutoresizingMaskIntoConstraints = false
         let general = NSTabViewItem(identifier: "general")
         general.label = "General"
@@ -111,7 +113,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         buttons.label = "Buttons"
         buttons.view = buttonsPane.makeView()
         tabs.addTabViewItem(buttons)
-        buttonsPane.onStatus = { [weak self] msg in self?.statusLabel.stringValue = msg }
+        buttonsPane.onStatus = { [weak self] msg in self?.setStatus(msg) }
 
         // 版本資訊從選單列搬來這裡：選單留給日常操作，關於資訊屬於設定視窗
         aboutButton.bezelStyle = .inline
@@ -193,6 +195,21 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         }
     }
 
+    /// 狀態列是兩個分頁共用的，訊息卻是當下情境的——不清掉的話，
+    /// 在 General 觸發的警告會跟著你飄到 Buttons 分頁，看起來像在講別的事。
+    private func setStatus(_ text: String, sticky: Bool = false) {
+        statusClear?.cancel()
+        statusLabel.stringValue = text
+        guard !sticky, !text.isEmpty else { return }
+        let work = DispatchWorkItem { [weak self] in self?.statusLabel.stringValue = "" }
+        statusClear = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6, execute: work)
+    }
+
+    func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+        setStatus("")
+    }
+
     // 設定器哲學：關窗即退出
     func windowWillClose(_ notification: Notification) {
         headerTimer?.invalidate()
@@ -251,11 +268,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
                 "supported: " + supported.sorted().map(String.init).joined(separator: " / ") + " Hz"
             showLighting()
             replayCheck.state = FileManager.default.fileExists(atPath: replayPlistURL.path) ? .on : .off
-            statusLabel.stringValue = "Ready"
+            setStatus("Ready")
         } catch {
             deviceLabel.stringValue = "Mouse offline or asleep"
             batteryLabel.stringValue = "Move the mouse, then reopen this panel"
-            statusLabel.stringValue = "❌ \(error)"
+            setStatus("❌ \(error)", sticky: true)
         }
     }
 
@@ -300,7 +317,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             try uiHostFallback(dev) { got = try dev.setDPI(target) }
             showDPI(got)
             statusLabel.stringValue = got == target ? "DPI → \(got) ✓" : "⚠️ asked \(target), device reports \(got)"
-        } catch { statusLabel.stringValue = "❌ \(error)" }
+        } catch { setStatus("❌ \(error)") }
     }
 
     @objc private func dpiPresetChanged() {
@@ -311,7 +328,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     @objc private func dpiCustomCommitted() {
         let text = dpiCustom.stringValue.trimmingCharacters(in: .whitespaces)
         guard let v = Int(text), (50...25600).contains(v) else {
-            statusLabel.stringValue = "⚠️ DPI must be a number between 50 and 25600"
+            setStatus("⚠️ DPI must be a number between 50 and 25600")
             return
         }
         applyDPI(v)
@@ -334,7 +351,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             var got = 0
             try uiHostFallback(dev) { got = try dev.setReportRateHz(hz) }
             statusLabel.stringValue = got == hz ? "Report rate → \(got) Hz ✓" : "⚠️ asked \(hz), device reports \(got)"
-        } catch { statusLabel.stringValue = "❌ \(error)" }
+        } catch { setStatus("❌ \(error)") }
     }
 
     @objc private func rgbChanged(_ sender: NSSegmentedControl) {
@@ -346,7 +363,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             lastRGB = kind
             showLighting()
             statusLabel.stringValue = applied > 0 ? "Lighting → \(kind) ✓" : "⚠️ effect not available on this device"
-        } catch { statusLabel.stringValue = "❌ \(error)" }
+        } catch { setStatus("❌ \(error)") }
     }
 
     @objc private func saveAction() {
@@ -356,6 +373,6 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             statusLabel.stringValue = replayCheck.state == .on
                 ? "Saved ✓ these settings come back at login"
                 : "Saved ✓ tick the box to have them re-applied at login"
-        } catch { statusLabel.stringValue = "❌ \(error)" }
+        } catch { setStatus("❌ \(error)") }
     }
 }
