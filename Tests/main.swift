@@ -317,11 +317,86 @@ do {
     expect(threw, "profile writes refuse an undecodable config too")
     expectEqual(try String(contentsOf: tmp, encoding: .utf8), broken, "…and still don't touch it")
 
-    // 檔案根本不存在時，寫入要正常成功——保護不能變成「第一次也寫不了」
-    try FileManager.default.removeItem(at: tmp)
-    try updateLowBatteryNotify(enabled: false, percent: 20)
-    expect(loadConfig()?.lowBatteryNotify == false, "a missing config is created rather than treated as corrupt")
-    expect(lowBatteryThreshold(loadConfig()) == nil, "…and the stored disable takes effect")
+    // 檔案根本不存在時，寫入要正常成功——保護不能變成「第一次也寫不了」。
+    // 包在 do/catch 裡：讓 throw 變成一筆失敗紀錄，而不是把整個測試程序 trap 掉
+    // （那樣看不出是哪一項壞了）
+    try? FileManager.default.removeItem(at: tmp)
+    do {
+        try updateLowBatteryNotify(enabled: false, percent: 20)
+        expect(loadConfig()?.lowBatteryNotify == false, "a missing config is created rather than treated as corrupt")
+        expect(lowBatteryThreshold(loadConfig()) == nil, "…and the stored disable takes effect")
+    } catch {
+        expect(false, "a missing config is created rather than treated as corrupt (threw: \(error))")
+    }
+
+    // 寫入端也要夾範圍。只測讀取端會漏：讀取端的夾值會把寫入端的缺失遮起來
+    do {
+        try updateLowBatteryNotify(enabled: true, percent: 99)
+        expectEqual(loadConfig()?.lowBatteryPercent, lowBatteryRange.upperBound,
+                    "the write path clamps too, not just the read path")
+    } catch {
+        expect(false, "clamped write succeeds (threw: \(error))")
+    }
+
+    // symlink：~/.config/nibble.json 常被接到 dotfiles repo。
+    // .atomic 是換檔寫入，天真地做會把連結換成普通檔案，使用者的真檔案就此被孤立
+    do {
+        let realFile = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("nibble-real-\(getpid()).json")
+        let link = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("nibble-link-\(getpid()).json")
+        defer {
+            try? FileManager.default.removeItem(at: realFile)
+            try? FileManager.default.removeItem(at: link)
+        }
+        var linked = BMConfig()
+        linked.dpi = 800
+        bmConfigURL = realFile
+        try saveConfig(linked)
+        try? FileManager.default.removeItem(at: link)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: realFile)
+
+        bmConfigURL = link
+        try updateLowBatteryNotify(enabled: true, percent: 30)
+
+        let attrs = try FileManager.default.attributesOfItem(atPath: link.path)
+        expect((attrs[.type] as? FileAttributeType) == .typeSymbolicLink,
+               "writing through a symlinked config keeps the symlink")
+        bmConfigURL = realFile
+        expectEqual(loadConfig()?.lowBatteryPercent, 30, "…and the real file behind it receives the write")
+        expectEqual(loadConfig()?.dpi, 800, "…without losing what was already there")
+    } catch {
+        expect(false, "symlinked config write (threw: \(error))")
+    }
+}
+
+// MARK: - 選單列存活探測（跨程序判斷，靠 flock 而不是比對程序名）
+
+section("menu bar liveness probe")
+do {
+    let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("nibble-lock-test-\(getpid()).lock")
+    let realLock = menuBarLockURL
+    menuBarLockURL = tmp
+    defer {
+        menuBarLockURL = realLock
+        try? FileManager.default.removeItem(at: tmp)
+    }
+
+    expect(!menuBarRunning(), "no lock file at all means nothing is running")
+
+    FileManager.default.createFile(atPath: tmp.path, contents: nil)
+    expect(!menuBarRunning(), "an unlocked leftover lock file doesn't count as running")
+
+    // flock 綁在 open file description 上，所以同程序另開一個 fd 也會衝突——
+    // 這正是設定視窗（選單列的子程序）能正確偵測到父程序的原因
+    let held = open(tmp.path, O_WRONLY)
+    expect(held >= 0, "test can open the lock file")
+    expect(flock(held, LOCK_EX | LOCK_NB) == 0, "test can take the lock")
+    expect(menuBarRunning(), "a held lock reads as running, even from the holding process")
+    flock(held, LOCK_UN)
+    close(held)
+    expect(!menuBarRunning(), "releasing the lock makes it not running again")
 }
 
 // MARK: - 改鍵表的鍵名解析（G1/G2 必須永遠拒絕）

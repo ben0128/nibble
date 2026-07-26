@@ -6,7 +6,8 @@ import UserNotifications
 
 /// 單一實例保護：重複啟動會在選單列疊出第二個圖示，兩個程序還會搶同一個 HID 裝置。
 /// 用檔案鎖而非檢查程序名——後者在 .app 與 CLI 混用時不可靠。
-let menuBarLockURL = FileManager.default.homeDirectoryForCurrentUser
+/// var 而非 let：測試要能把探測指向暫存檔，否則這段跨程序邏輯無法驗證
+var menuBarLockURL = FileManager.default.homeDirectoryForCurrentUser
     .appendingPathComponent(".config/nibble/menubar.lock")
 
 /// 從別的程序判斷選單列還活著沒：試搶它的鎖，搶到就馬上放掉。

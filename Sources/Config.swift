@@ -87,9 +87,12 @@ func currentProfileName(_ cfg: BMConfig?) -> String {
 func migrateToProfiles(_ cfg: inout BMConfig) {
     guard cfg.buttonProfiles == nil else { return }
     if let legacy = cfg.buttonMaps, !legacy.isEmpty {
-        let backup = bmConfigURL.deletingPathExtension().appendingPathExtension("json.bak")
+        let real = bmConfigURL.resolvingSymlinksInPath()
+        let backup = real.deletingPathExtension().appendingPathExtension("json.bak")
         try? FileManager.default.removeItem(at: backup)
-        try? FileManager.default.copyItem(at: bmConfigURL, to: backup)
+        // 來源用解析過的路徑：copyItem 對 symlink 會複製「連結」，
+        // 那份備份會指回正在被改寫的同一個檔案，等於沒有備份
+        try? FileManager.default.copyItem(at: real, to: backup)
     }
     cfg.buttonProfiles = [defaultProfileName: cfg.buttonMaps ?? [:]]
     cfg.buttonMaps = nil
@@ -205,7 +208,12 @@ func saveConfig(_ c: BMConfig) throws {
     // .atomic：中途失敗（斷電、磁碟滿）留下的是原檔，而不是一個半截、解不開的檔案。
     // 沒有這個旗標，一次失敗的寫入就會把設定檔推進 loadConfigForWrite 的拒絕路徑。
     // watchConfig() 已經監看 .rename/.delete，所以換檔式寫入照樣會觸發重載。
-    try (try enc.encode(c)).write(to: bmConfigURL, options: .atomic)
+    //
+    // 但 .atomic 是「寫暫存檔再換過去」，直接對著 symlink 做會把連結砍掉、
+    // 換成一個普通檔案——而 ~/.config/nibble.json 正是典型會被接到 dotfiles repo
+    // 的路徑。使用者不會掉資料，但從此在 repo 裡改檔案沒有任何效果，也極難察覺。
+    // 所以先解析到真正的目標，再原子寫入那個目標。
+    try (try enc.encode(c)).write(to: bmConfigURL.resolvingSymlinksInPath(), options: .atomic)
 }
 
 /// 正式執行時是 ~/.config/nibble.json。可用 NIBBLE_CONFIG 覆寫——

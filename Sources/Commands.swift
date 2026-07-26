@@ -190,8 +190,15 @@ func cmdDoctor() -> Int32 {
     let mapCount = activeButtonMaps(cfg).values.reduce(0, { $0 + $1.count })
     let profiles = profileNames(cfg)
     let profileNote = profiles.count > 1 ? " · profile \(currentProfileName(cfg)) of \(profiles.count)" : ""
-    add("config", cfg != nil, cfg == nil ? "not created" : "\(bmConfigURL.path) · \(mapCount) button mapping(s)\(profileNote)",
-        fix: cfg == nil ? "nibble config init" : nil)
+    // 「解不開」和「沒建立」是兩種狀態，處理方式完全不同——而 doctor 是卡住的人第一個跑的東西。
+    // 混在一起會把人導向 `nibble config init`，而那個指令現在（正確地）會拒絕動這個檔案
+    let cfgExists = FileManager.default.fileExists(atPath: bmConfigURL.path)
+    add("config", cfg != nil,
+        cfg != nil ? "\(bmConfigURL.path) · \(mapCount) button mapping(s)\(profileNote)"
+          : (cfgExists ? "\(bmConfigURL.path) exists but could not be parsed — Nibble refuses to overwrite it"
+                       : "not created"),
+        fix: cfg != nil ? nil
+          : (cfgExists ? "fix the JSON by hand (or move it aside), then rerun" : "nibble config init"))
 
     // 鎖檔而非 pgrep：doctor 自己也是同一個 binary，比對程序名會把自己算成選單列
     let menubarRunning = menuBarRunning()
