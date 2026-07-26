@@ -22,6 +22,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private let statusLabel = NSTextField(labelWithString: " ")
     private var lastIndex: UInt8 = 1
     private var lastRGB: String?
+    private let buttonsPane = ButtonsPane()
     private static let rateValues = [125, 250, 500, 1000]
     private static let rgbKinds = ["off", "cycle", "breathing"]
 
@@ -49,24 +50,48 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         let btnRow = NSStackView(views: [saveBtn, applyBtn])
         btnRow.spacing = 8
 
-        let stack = NSStackView(views: [
-            deviceLabel, batteryLabel,
+        let generalStack = NSStackView(views: [
             sectionLabel("DPI"), dpiRow,
             sectionLabel("回報率（Hz）"), rateControl,
             sectionLabel("燈效（runtime，斷電回復）"), rgbControl,
-            NSBox(), btnRow, statusLabel,
+            NSBox(), btnRow,
         ])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
-        stack.edgeInsets = NSEdgeInsets(top: 16, left: 20, bottom: 12, right: 20)
-        if let box = stack.views.first(where: { $0 is NSBox }) as? NSBox { box.boxType = .separator }
+        generalStack.orientation = .vertical
+        generalStack.alignment = .leading
+        generalStack.spacing = 8
+        generalStack.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 12, right: 16)
+        if let box = generalStack.views.first(where: { $0 is NSBox }) as? NSBox { box.boxType = .separator }
 
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 320),
+        let tabs = NSTabView()
+        let general = NSTabViewItem(identifier: "general")
+        general.label = "General"
+        general.view = generalStack
+        tabs.addTabViewItem(general)
+
+        let buttons = NSTabViewItem(identifier: "buttons")
+        buttons.label = "Buttons"
+        buttons.view = buttonsPane.makeView()
+        tabs.addTabViewItem(buttons)
+        buttonsPane.onStatus = { [weak self] msg in self?.statusLabel.stringValue = msg }
+
+        let header = NSStackView(views: [deviceLabel, batteryLabel])
+        header.orientation = .vertical
+        header.alignment = .leading
+        header.spacing = 2
+
+        let root = NSStackView(views: [header, tabs, statusLabel])
+        root.orientation = .vertical
+        root.alignment = .leading
+        root.spacing = 8
+        root.edgeInsets = NSEdgeInsets(top: 14, left: 18, bottom: 10, right: 18)
+        tabs.widthAnchor.constraint(equalToConstant: 460).isActive = true
+        tabs.heightAnchor.constraint(equalToConstant: 330).isActive = true
+
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 430),
                           styleMask: [.titled, .closable, .miniaturizable],
                           backing: .buffered, defer: false)
         window.title = "Nibble"
-        window.contentView = stack
+        window.contentView = root
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
@@ -74,10 +99,14 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         window.makeKeyAndOrderFront(nil)
 
         loadState()
+        buttonsPane.reload()
     }
 
     // 設定器哲學：關窗即退出
-    func windowWillClose(_ notification: Notification) { NSApp.terminate(nil) }
+    func windowWillClose(_ notification: Notification) {
+        buttonsPane.teardown()
+        NSApp.terminate(nil)
+    }
 
     private func sectionLabel(_ text: String) -> NSTextField {
         let l = NSTextField(labelWithString: text)

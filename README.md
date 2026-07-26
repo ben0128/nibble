@@ -42,7 +42,7 @@ Button remapping additionally needs **Accessibility** permission (to synthesize 
 | `nibble spy [seconds]` | Live button-event monitor, G-series diagnostic; auto-stops after N seconds |
 | `nibble remap` | Interactive remap: press a physical button → assign keystroke / system action / disable |
 | `nibble menubar` | Interactive menu bar: battery + DPI/rate/RGB controls (~15 MB resident, opt-in) |
-| `nibble ui` | Native settings window; quits when closed (zero resident) |
+| `nibble ui` | Native settings window (General + Buttons tabs); quits when closed |
 
 Debug: `NIBBLE_DEBUG=1 nibble <cmd>` prints raw HID++ packets.
 Exit codes: `0` ok · `1` no awake device or value not applied · `2` transport/protocol error · `64` usage.
@@ -65,6 +65,14 @@ Exit codes: `0` ok · `1` no awake device or value not applied · `2` transport/
 | `wheelThreshold` | int | 1–254 |
 
 Omitted keys are left untouched.
+
+## Remapping buttons
+
+Two equivalent paths — CLI `nibble remap`, or the **Buttons** tab in `nibble ui`.
+
+The button list is enumerated from the device itself, so any Logitech mouse populates it without per-model artwork. To identify a physical button, click **按實體鍵定位 / press-to-identify** and press it — the matching row highlights. Then edit the row to assign a keystroke (`cmd+shift+4`), a system action, or disable it.
+
+Mappings are stored per device name in `buttonMaps` and executed by `nibble menubar`; after editing, use the menu bar's **重新載入改鍵引擎 / reload engine** item (or restart the menu bar).
 
 ## Behavior model
 
