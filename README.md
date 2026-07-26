@@ -93,6 +93,8 @@ Two equivalent paths — CLI `nibble remap`, or the **Buttons** tab in `nibble u
 
 The button list is enumerated from the device itself, so any Logitech mouse populates it without per-model artwork. Click **Press to identify** and press a physical button — its row highlights. Then edit the row: record a keystroke by actually pressing it, pick a system action, or disable the button. Right-click a row to clear its mapping.
 
+Edits are staged, not written as you type: the table shows them immediately and **Save** (bottom right, or Return) commits them in one write. Closing with unsaved edits asks first. `nibble remap` writes straight away, as a CLI should.
+
 Mappings are stored per device name and executed by the menu bar app, which watches the config file and reloads automatically when you save.
 
 ### Profiles

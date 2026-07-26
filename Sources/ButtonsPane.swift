@@ -14,6 +14,8 @@ struct ButtonRow {
 
 final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     var onStatus: ((String) -> Void)?
+    /// 有幾筆待儲存的改動——視窗用它決定 Save 按鈕能不能按
+    var onPendingChange: ((Int) -> Void)?
 
     private let table = NSTableView()
     private let hintLabel = NSTextField(labelWithString: "")
@@ -42,6 +44,11 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     private var prevMask: UInt16 = 0
     private var divertedForLearn: [UInt16] = []
     private var suppressEditorApply = false   // 載入既有設定時不要反過來觸發寫檔
+    /// 待儲存的改動：按鍵名 → 動作（值為 nil 代表要清掉該映射）。
+    /// 先前每動一下就寫檔，於是每次都要等寫檔 → 檔案監看 → 引擎重載 → 表格刷新，操作起來黏手。
+    private var pending: [String: ButtonAction?] = [:]
+
+    var pendingCount: Int { pending.count }
 
     /// spy 事件 bitmask 的 bit → 列序。位序若被實測推翻，只改這裡。
     static func bitToRow(_ bit: Int) -> Int { bit }
@@ -224,6 +231,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
     @objc private func profileChanged() {
         guard let name = profilePopup.titleOfSelectedItem else { return }
+        if !pending.isEmpty { pending.removeAll(); onPendingChange?(0) }   // 換組就不套用舊組的暫存
         do { try switchProfile(to: name); reload(); onStatus?("Profile: \(name)") }
         catch { onStatus?("❌ \(error)") }
     }
@@ -302,6 +310,8 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
                 }
             }
             rows = out
+            pending.removeAll()
+            onPendingChange?(0)
             table.reloadData()
             table.sizeLastColumnToFit()   // 撐滿捲動區，右側不留下看似空欄的縫隙
             if table.selectedRow < 0 { table.scrollRowToVisible(0) }
@@ -424,7 +434,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
     @objc private func appFieldCommitted() { applyEditor() }
 
-    /// 每次改動立刻寫檔——選單列監看設定檔，會自動重載引擎
+    /// 只暫存在記憶體，等使用者按 Save 才落地
     @objc private func applyEditor() {
         guard !suppressEditorApply, let i = selectedRow, rows[i].remappable else { return }
         var action: ButtonAction?
@@ -450,36 +460,65 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         default:
             action = nil
         }
-        save(action, for: i)
+        stage(action, for: i)
     }
 
     @objc private func clearSelected() {
         let sel = table.clickedRow >= 0 ? table.clickedRow : table.selectedRow
         guard sel >= 0, sel < rows.count, rows[sel].action != nil else { return }
-        save(nil, for: sel)
+        stage(nil, for: sel)
         updateEditor()
     }
 
-    private func save(_ action: ButtonAction?, for rowIndex: Int) {
-        let key = rows[rowIndex].name.components(separatedBy: " ").first ?? rows[rowIndex].name
+    private func buttonKey(_ rowIndex: Int) -> String {
+        rows[rowIndex].name.components(separatedBy: " ").first ?? rows[rowIndex].name
+    }
+
+    private func describe(_ action: ButtonAction?) -> String {
+        action.map {
+            switch $0.type {
+            case "keys", "macro": return $0.keys ?? ""
+            case "system": return $0.action ?? ""
+            default: return "disabled"
+            }
+        } ?? "default"
+    }
+
+    /// 暫存一筆改動：畫面立刻反映，設定檔還沒動
+    private func stage(_ action: ButtonAction?, for rowIndex: Int) {
+        let key = buttonKey(rowIndex)
+        pending[key] = action
+        rows[rowIndex].action = action
+        table.reloadData()
+        table.selectRowIndexes(IndexSet(integer: rowIndex), byExtendingSelection: false)
+        onStatus?("\(key) → \(describe(action)) · not saved yet")
+        onPendingChange?(pending.count)
+    }
+
+    /// 一次寫入所有暫存改動——只碰設定檔一次，引擎也只重載一次
+    func commitPending() {
+        guard !pending.isEmpty else { return }
+        let count = pending.count
         do {
             try updateActiveButtonMap(device: deviceName) { devMap in
-                if let action { devMap[key] = action } else { devMap.removeValue(forKey: key) }
-            }
-            rows[rowIndex].action = action
-            table.reloadData()
-            table.selectRowIndexes(IndexSet(integer: rowIndex), byExtendingSelection: false)
-            let desc = action.map {
-                switch $0.type {
-                case "keys", "macro": return $0.keys ?? ""
-                case "system": return $0.action ?? ""
-                default: return "disabled"
+                for (key, action) in pending {
+                    if let action { devMap[key] = action } else { devMap.removeValue(forKey: key) }
                 }
-            } ?? "default"
-            onStatus?("\(key) → \(desc) · applied")
+            }
+            pending.removeAll()
+            onPendingChange?(0)
+            onStatus?("Saved \(count) change\(count == 1 ? "" : "s") — the menu bar reloads the engine")
         } catch {
             onStatus?("❌ save failed: \(error)")
         }
+    }
+
+    func discardPending() {
+        guard !pending.isEmpty else { return }
+        pending.removeAll()
+        onPendingChange?(0)
+        reload()
+        onStatus?("Discarded unsaved changes")
     }
 
     // MARK: press-to-identify

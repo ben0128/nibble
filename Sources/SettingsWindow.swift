@@ -26,6 +26,8 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     private let replayCheck = NSButton(checkboxWithTitle: "Re-apply my settings at login", target: nil, action: nil)
     private let statusLabel = NSTextField(labelWithString: " ")
     private let aboutButton = NSButton(title: "GitHub", target: nil, action: nil)
+    private let saveButton = NSButton(title: "Save", target: nil, action: nil)
+    private let closeButton = NSButton(title: "Close", target: nil, action: nil)
     private var lastIndex: UInt8 = 1
     private var lastRGB: String? = lastKnownRGB()
     private let buttonsPane = ButtonsPane()
@@ -107,8 +109,22 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         buttons.view = buttonsPane.makeView()
         tabs.addTabViewItem(buttons)
         buttonsPane.onStatus = { [weak self] msg in self?.setStatus(msg) }
+        buttonsPane.onPendingChange = { [weak self] count in
+            self?.saveButton.isEnabled = count > 0
+            self?.saveButton.title = count > 0 ? "Save (\(count))" : "Save"
+        }
 
-        // 版本資訊從選單列搬來這裡：選單留給日常操作，關於資訊屬於設定視窗
+        // Save/Close：改鍵不再邊改邊寫檔，改動先暫存，按 Save 才落地
+        saveButton.target = self
+        saveButton.action = #selector(saveButtonsAction)
+        saveButton.keyEquivalent = "\r"          // Enter 直接儲存
+        saveButton.isEnabled = false
+        saveButton.toolTip = "Write the pending button changes to the config file. The menu bar reloads the engine after that."
+        closeButton.target = self
+        closeButton.action = #selector(closeAction)
+        closeButton.keyEquivalent = "\u{1b}"     // Esc 關窗
+
+        // 版本資訊移到右上角：右下角留給 Save/Close
         aboutButton.bezelStyle = .inline
         aboutButton.isBordered = false
         aboutButton.target = self
@@ -129,7 +145,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
 
         // 全程 Auto Layout：NSTabView 用 frame 幫分頁排版，內容一旦帶固定約束就會打架、溢出邊界
         let root = NSView()
-        for v in [deviceLabel, batteryLabel, tabs, statusLabel, aboutButton] as [NSView] {
+        for v in [deviceLabel, batteryLabel, tabs, statusLabel, aboutButton, saveButton, closeButton] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
@@ -145,7 +161,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         NSLayoutConstraint.activate([
             deviceLabel.topAnchor.constraint(equalTo: root.topAnchor, constant: 14),
             deviceLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
-            deviceLabel.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -18),
+            deviceLabel.trailingAnchor.constraint(lessThanOrEqualTo: aboutButton.leadingAnchor, constant: -12),
 
             batteryLabel.topAnchor.constraint(equalTo: deviceLabel.bottomAnchor, constant: 2),
             batteryLabel.leadingAnchor.constraint(equalTo: deviceLabel.leadingAnchor),
@@ -155,13 +171,19 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             tabs.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
             tabs.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
 
-            statusLabel.topAnchor.constraint(equalTo: tabs.bottomAnchor, constant: 8),
+            tabs.bottomAnchor.constraint(equalTo: saveButton.topAnchor, constant: -10),
+            statusLabel.topAnchor.constraint(greaterThanOrEqualTo: tabs.bottomAnchor, constant: 6),
             statusLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
-            statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: aboutButton.leadingAnchor, constant: -12),
-            statusLabel.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -12),
+            statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: saveButton.leadingAnchor, constant: -12),
+            statusLabel.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
+
+            saveButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
+            saveButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -14),
+            closeButton.trailingAnchor.constraint(equalTo: saveButton.leadingAnchor, constant: -10),
+            closeButton.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
 
             aboutButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
-            aboutButton.centerYAnchor.constraint(equalTo: statusLabel.centerYAnchor),
+            aboutButton.centerYAnchor.constraint(equalTo: deviceLabel.centerYAnchor),
         ])
 
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 480),
@@ -221,6 +243,30 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             : content.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -12))
         NSLayoutConstraint.activate(cs)
         return container
+    }
+
+    @objc private func saveButtonsAction() {
+        buttonsPane.commitPending()
+    }
+
+    @objc private func closeAction() {
+        window.performClose(nil)
+    }
+
+    /// 有未儲存的改動就先問——直接關掉等於默默丟棄使用者剛做的事
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard buttonsPane.pendingCount > 0 else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Save \(buttonsPane.pendingCount) button change\(buttonsPane.pendingCount == 1 ? "" : "s")?"
+        alert.informativeText = "They haven't been written to the config yet."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Discard")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: buttonsPane.commitPending(); return true
+        case .alertSecondButtonReturn: buttonsPane.discardPending(); return true
+        default: return false
+        }
     }
 
     @objc private func openRepo() {
