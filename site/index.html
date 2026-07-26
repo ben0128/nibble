@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Nibble — your Logitech mouse, minus the 4 GB</title>
-  <meta name="description" content="Nibble is a 256 KB zero-dependency command-line tool that controls your Logitech mouse natively on macOS. No daemon, no telemetry, no account." />
+  <meta name="description" content="Nibble is a 516 KB zero-dependency command-line tool that controls your Logitech mouse natively on macOS. No daemon, no telemetry, no account. brew install nibble." />
   <meta property="og:title" content="Nibble — your Logitech mouse, minus the 4 GB" />
-  <meta property="og:description" content="A 256 KB binary that speaks HID++ 4.2 to your Logitech mouse. No daemon, no telemetry, no account." />
+  <meta property="og:description" content="A 516 KB binary that speaks HID++ 4.2 to your Logitech mouse. No daemon, no telemetry, no account." />
   <meta property="og:type" content="website" />
   <meta name="theme-color" content="#0B0E14" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%96%B1%EF%B8%8F%3C/text%3E%3C/svg%3E" />
@@ -89,6 +89,13 @@
     .btn-primary { background: var(--accent); color: #06130C; box-shadow: 0 6px 24px rgba(70, 232, 160, .28); }
     .btn-ghost { color: var(--ink); border: 1.5px solid var(--line); }
     .btn-ghost:hover { border-color: var(--accent-dim); }
+    .btn-brew {
+      font: 600 .92rem var(--mono); color: var(--ink);
+      background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px;
+      padding: 12px 20px; cursor: pointer; transition: border-color .2s, transform .15s;
+    }
+    .btn-brew:hover { border-color: var(--accent-dim); transform: translateY(-1px); }
+    .btn-brew .cp { color: var(--soft); margin-left: 6px; }
     .hero-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
     .chip {
       font: 500 .8rem var(--mono); color: color-mix(in srgb, var(--accent) 80%, #fff);

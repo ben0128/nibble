@@ -39,38 +39,38 @@ case "version", "--version", "-v":
     exit(0)
 default:
     print("""
-    Nibble v\(NIBBLE_VERSION) — \("lightweight Logitech mouse control for macOS (native · zero-dependency · no daemon by default)")
+    Nibble v\(NIBBLE_VERSION) — lightweight Logitech mouse control for macOS (native · zero-dependency · no daemon by default)
 
     READ
       nibble status [--json]        device overview
       nibble battery [--json]       battery only, script-friendly
       nibble dump [--json]          full HID++ feature enumeration
-      nibble buttons [--json]       \("programmable buttons (0x1b04 MX / 0x8110 G)")
+      nibble buttons [--json]       programmable buttons (0x1b04 MX / 0x8110 G)
       nibble onboard info [--json]  onboard memory info
       nibble doctor [--json]        diagnose permissions, device, engine — start here if stuck
 
-    \("CONFIGURE (runtime writes, reverted by power cycle, verified by read-back)")
+    CONFIGURE (runtime writes, reverted by power cycle, verified by read-back)
       nibble dpi [50-25600]         get / set DPI
       nibble rate [125|250|500|1000] get / set report rate
-      nibble rgb off|show           \("lights off (power saving) / list effects")
+      nibble rgb off|show           lights off (power saving) / list effects
       nibble mode [host|onboard]    control-mode flag
-      nibble wheel free|ratchet     \("SmartShift (MX-series)")
+      nibble wheel free|ratchet     SmartShift (MX-series)
 
-    \("REMAP BUTTONS (engine runs inside the menu bar app)")
+    REMAP BUTTONS (engine runs inside the menu bar app)
       nibble remap                  press a button, assign an action
-      nibble spy [seconds]          \("live button-event monitor (diagnostic)")
+      nibble spy [seconds]          live button-event monitor (diagnostic)
 
     CONFIG & REPLAY
       nibble config init|show       ~/.config/nibble.json
       nibble apply                  apply config file
-      nibble replay install         \("auto-apply at login (one-shot launchd)")
+      nibble replay install         auto-apply at login (one-shot launchd)
 
-    \("ONBOARD MEMORY (read-only by design)")
+    ONBOARD MEMORY (read-only by design)
       nibble onboard backup         dump all sectors — escape hatch
 
     UI
-      nibble menubar                \("interactive menu bar + remap engine host (~15 MB)")
-      nibble ui                     \("settings window (General + Buttons); quits when closed")
+      nibble menubar                interactive menu bar + remap engine host (~15 MB)
+      nibble ui                     settings window (General + Buttons); quits when closed
       open Nibble.app               same as menubar; bundle also enables low-battery notifications
 
     Env: NIBBLE_DEBUG=1 dumps raw HID++ packets.

@@ -18,7 +18,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private let dpiValue = NSTextField(labelWithString: "–")
     private let dpiSlider = NSSlider(value: 1600, minValue: 100, maxValue: 6400, target: nil, action: nil)
     private let rateControl = NSSegmentedControl(labels: ["125", "250", "500", "1000"], trackingMode: .selectOne, target: nil, action: nil)
-    private let rgbControl = NSSegmentedControl(labels: ["Off ⚡", "Cycle", "Breathing"], trackingMode: .selectOne, target: nil, action: nil)
+    private let rgbControl = NSSegmentedControl(labels: ["Off", "Cycle", "Breathing"], trackingMode: .selectOne, target: nil, action: nil)
     private let statusLabel = NSTextField(labelWithString: " ")
     private var lastIndex: UInt8 = 1
     private var lastRGB: String?

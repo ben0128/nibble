@@ -85,7 +85,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         rgbRoot = NSMenuItem(title: "Lighting", action: nil, keyEquivalent: "")
         let rgbMenu = NSMenu()
-        for (title, kind) in [("Off (power saving ⚡)", "off"),
+        for (title, kind) in [("Off (power saving)", "off"),
                               ("Cycle", "cycle"),
                               ("Breathing", "breathing")] {
             let item = NSMenuItem(title: title, action: #selector(setRGBAction(_:)), keyEquivalent: "")

@@ -16,7 +16,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     var onStatus: ((String) -> Void)?
     private let table = NSTableView()
     private let hintLabel = NSTextField(labelWithString: "")
-    private let learnButton = NSButton(title: "🎯 Press to identify", target: nil, action: nil)
+    private let learnButton = NSButton(title: "Press to identify", target: nil, action: nil)
     private var rows: [ButtonRow] = []
     private var deviceName = "unknown"
     private var learning = false
@@ -184,7 +184,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         spyDev = nil
         spyTransport = nil
         learning = false
-        learnButton.title = "🎯 Press to identify"
+        learnButton.title = "Press to identify"
         onStatus?("Identify stopped")
     }
 
