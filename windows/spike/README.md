@@ -59,25 +59,15 @@ CLI 和托盤已經建好、無裝置路徑在 CI 上實測過；**有裝置的�
 下載 `nibble-win-x64`，在 VM 裡照順序跑：
 
 ```powershell
-.
-ibble.exe status          # 名稱、電量、DPI、rate 全部要有值
-.
-ibble.exe dpi 3200        # 要回報 read-back；滑鼠移動手感應該立刻變
-.
-ibble.exe dpi 1600
-.
-ibble.exe rate 500        # 這條會踩 host-fallback（滑鼠若在 onboard 模式）
-.
-ibble.exe rate 1000
-.
-ibble.exe rgb off         # 燈要真的熄
-.
-ibble.exe config init; .
-ibble.exe apply
-.
-ibble-tray.exe            # 托盤圖示 → tooltip 電量 → 右鍵選單改 DPI
-.
-ibble.exe doctor          # tray 檢查此時應顯示 running
+.\nibble.exe status          # 名稱、電量、DPI、rate 全部要有值
+.\nibble.exe dpi 3200        # 要回報 read-back；滑鼠移動手感應該立刻變
+.\nibble.exe dpi 1600
+.\nibble.exe rate 500        # 這條會踩 host-fallback（滑鼠若在 onboard 模式）
+.\nibble.exe rate 1000
+.\nibble.exe rgb off         # 燈要真的熄
+.\nibble.exe config init; .\nibble.exe apply
+.\nibble-tray.exe            # 托盤圖示 → tooltip 電量 → 右鍵選單改 DPI
+.\nibble.exe doctor          # tray 檢查此時應顯示 running
 ```
 
 全過 → 回報一聲，win-v0.1.0 照 `windows/scoop/nibble.json` 頂部的流程發佈。
