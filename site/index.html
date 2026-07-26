@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Nibble — your Logitech mouse, minus the 4 GB</title>
+  <meta name="description" content="Nibble is a 256 KB zero-dependency command-line tool that controls your Logitech mouse natively on macOS. Scroll to fly through how it works." />
+  <meta property="og:title" content="Nibble — your Logitech mouse, minus the 4 GB" />
+  <meta property="og:description" content="A 256 KB binary that speaks HID++ to your Logitech mouse. No daemon, no account, no telemetry. Scroll to fly in." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="assets/og.jpg" />
+  <meta name="theme-color" content="#0B0E14" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%96%B1%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+  <style>
+    /* ---- Nibble dark theme tokens (unlayered: wins over the engine's @layer sw) ---- */
+    :root, .sw-root {
+      --sw-bg: #0B0E14;         /* == the scenes' near-black background   */
+      --sw-ink: #E6EDF3;
+      --sw-ink-soft: #8B96A5;
+      --sw-accent: #46E8A0;     /* phosphor green; sections override live */
+      --nb-dark: #06130C;       /* text on accent-filled controls          */
+    }
+    html { color-scheme: dark; }
+    ::selection { background: color-mix(in srgb, var(--sw-accent) 40%, transparent); }
+
+    /* Terminal flavour: monospace eyebrows + section numbers already mono */
+    .sw-copy__eyebrow { font-family: ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .22em; }
+
+    /* Dark-theme fixes for engine chrome that assumes a light page */
+    .sw-topcta, .sw-btn--primary {
+      background: var(--sw-accent);
+      color: var(--nb-dark);
+      box-shadow: 0 6px 24px color-mix(in srgb, var(--sw-accent) 35%, transparent);
+    }
+    .sw-btn--ghost { color: var(--sw-ink); border-color: color-mix(in srgb, var(--sw-ink) 35%, transparent); }
+    .sw-nav {
+      background: color-mix(in srgb, #0B0E14 62%, transparent);
+      border-color: color-mix(in srgb, var(--sw-accent) 20%, transparent);
+    }
+    .sw-nav__item.is-active { color: var(--nb-dark); }
+    .sw-route__label {
+      background: color-mix(in srgb, #0B0E14 85%, transparent);
+      color: var(--sw-ink);
+      border-color: color-mix(in srgb, var(--sw-accent) 25%, transparent);
+    }
+    .sw-copy__tags li {
+      color: color-mix(in srgb, var(--sw-accent) 80%, #fff);
+      background: color-mix(in srgb, var(--sw-accent) 10%, #0B0E14);
+      border-color: color-mix(in srgb, var(--sw-accent) 30%, transparent);
+    }
+    /* tone the big white radial down to a faint accent aurora */
+    .sw-sky__glow {
+      background:
+        radial-gradient(60% 42% at 74% 16%, color-mix(in srgb, var(--sw-accent) 14%, transparent), transparent 70%),
+        radial-gradient(46% 34% at 30% 80%, color-mix(in srgb, #4CC9F0 8%, transparent), transparent 70%);
+    }
+
+    /* Language toggle (injected into the engine topbar) */
+    .nb-lang {
+      font: 600 .82rem ui-monospace, "SF Mono", Menlo, monospace;
+      color: var(--sw-ink-soft);
+      background: color-mix(in srgb, #0B0E14 62%, transparent);
+      border: 1px solid color-mix(in srgb, var(--sw-accent) 20%, transparent);
+      border-radius: 999px;
+      padding: 8px 14px;
+      cursor: pointer;
+      transition: color .25s, border-color .25s;
+      -webkit-backdrop-filter: blur(10px);
+      backdrop-filter: blur(10px);
+    }
+    .nb-lang:hover { color: var(--sw-ink); border-color: color-mix(in srgb, var(--sw-accent) 45%, transparent); }
+    @media (max-width: 560px) { .sw-topcta { display: none; } }
+  </style>
+</head>
+<body>
+  <div id="top"></div>
+  <div id="world"></div>
+
+  <script src="scrub-engine.js"></script>
+  <script>
+    const REPO = 'https://github.com/ben0128/nibble';
+
+    /* ---------------- bilingual copy ---------------- */
+    const COPY = {
+      en: {
+        hint: 'scroll to fly in',
+        topCta: 'GitHub',
+        sections: [
+          { label: 'The Desk', eyebrow: 'Meet Nibble',
+            title: 'Your mouse, minus the 4 GB.',
+            body: 'A nibble is half a byte. This one is a 256 KB binary that controls your Logitech mouse from the macOS terminal — no daemon, no account, no telemetry.',
+            tags: ['256 KB binary', 'Zero dependencies', 'Open source'] },
+          { label: 'The Terminal', eyebrow: 'The CLI',
+            title: 'One binary. Every control.',
+            body: 'status, battery, dpi, rate, rgb, wheel — every control is a one-liner, script-friendly, with honest exit codes.',
+            tags: ['14 commands', 'Script-friendly', 'Exit codes 0·1·2'] },
+          { label: 'The Receiver', eyebrow: 'Native protocol',
+            title: 'Speaks HID++, natively.',
+            body: 'Nibble talks raw HID++ 4.2 to the Lightspeed receiver through IOKit — the same language G HUB speaks, without the 4 GB around it.',
+            tags: ['HID++ 4.2', 'Lightspeed', 'IOKit'] },
+          { label: 'The Sensor', eyebrow: 'DPI & report rate',
+            title: '50 to 25,600. Verified.',
+            body: 'Set DPI and polling rate in one line — every write is read back from the device and confirmed, never assumed.',
+            tags: ['DPI 50–25600', '125–1000 Hz', 'Read-back verified'] },
+          { label: 'The Battery', eyebrow: 'Power, honestly',
+            title: 'Real volts, not a guess.',
+            body: 'Battery reads come from the cell itself — millivolts through a LiPo curve — and rgb off buys the hours back.',
+            tags: ['3.85 V live', 'LiPo curve', 'rgb off'] },
+          { label: 'Set & Forget', eyebrow: 'config · apply · replay',
+            title: 'Set once. Replays at login.',
+            body: 'Your setup lives in a tiny JSON file; a one-shot launchd agent re-applies it at login and exits. Zero resident processes.',
+            tags: ['nibble.json', 'launchd replay', 'MIT'],
+            cta: { primary: 'Get Nibble on GitHub', secondary: 'git clone && make' } },
+        ],
+      },
+      zh: {
+        hint: '捲動，飛進去',
+        topCta: 'GitHub',
+        sections: [
+          { label: '深夜桌面', eyebrow: '認識 Nibble',
+            title: '你的滑鼠，不用 4 GB。',
+            body: 'nibble 是半個 byte。這個 Nibble 是 256 KB 的命令列工具，在 macOS 終端機原生控制你的羅技滑鼠——沒有常駐程式、不用帳號、零遙測。',
+            tags: ['256 KB 執行檔', '零依賴', '開源'] },
+          { label: '終端機', eyebrow: '指令列',
+            title: '一個執行檔，全部搞定。',
+            body: 'status、battery、dpi、rate、rgb、wheel——每個控制都是一行指令，適合寫腳本，exit code 誠實。',
+            tags: ['14 個指令', '腳本友善', 'Exit codes 0·1·2'] },
+          { label: '接收器', eyebrow: '原生協定',
+            title: '原生開講 HID++。',
+            body: 'Nibble 透過 IOKit 對 Lightspeed 接收器直接說 HID++ 4.2——跟 G HUB 同一種語言，但不用背 4 GB 的行李。',
+            tags: ['HID++ 4.2', 'Lightspeed', 'IOKit'] },
+          { label: '感應器', eyebrow: 'DPI 與回報率',
+            title: '50 到 25,600，寫入必驗。',
+            body: '一行指令設定 DPI 與回報率——每次寫入都會從裝置讀回確認，不靠猜。',
+            tags: ['DPI 50–25600', '125–1000 Hz', '讀回驗證'] },
+          { label: '電池', eyebrow: '誠實的電量',
+            title: '真實電壓，不是猜測。',
+            body: '電量直接來自電芯——毫伏特經 LiPo 曲線換算——rgb off 再幫你把時數買回來。',
+            tags: ['3.85 V 即時', 'LiPo 曲線', 'rgb off'] },
+          { label: '一勞永逸', eyebrow: 'config · apply · replay',
+            title: '設定一次，登入自動重放。',
+            body: '設定住在一個小小的 JSON 裡；launchd 代理在登入時重放一次就退出——零常駐程式。',
+            tags: ['nibble.json', 'launchd replay', 'MIT'],
+            cta: { primary: '到 GitHub 取得 Nibble', secondary: 'git clone && make' } },
+        ],
+      },
+    };
+
+    /* section skeleton: ids, assets, accents, pacing (language-independent) */
+    const BASE = [
+      { id: 'desk',     accent: '#4CC9F0', scroll: 1.6,  linger: 0.4  },
+      { id: 'terminal', accent: '#46E8A0', scroll: 1.25 },
+      { id: 'receiver', accent: '#9D6BFF', scroll: 1.2  },
+      { id: 'sensor',   accent: '#FFB454', scroll: 1.35, linger: 0.3  },
+      { id: 'battery',  accent: '#F72585', scroll: 1.25 },
+      { id: 'finale',   accent: '#46E8A0', scroll: 1.8,  linger: 0.45 },
+    ];
+
+    const saved = localStorage.getItem('nibble-lang');
+    let lang = saved || ((navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en');
+
+    function sectionsFor(l) {
+      return BASE.map((b, i) => {
+        const c = COPY[l].sections[i];
+        return {
+          id: b.id, label: c.label,
+          still: `assets/${b.id}.webp`, stillMobile: `assets/${b.id}-m.webp`,
+          clip: `assets/vid/${b.id}.mp4`, clipMobile: `assets/vid/${b.id}-m.mp4`,
+          accent: b.accent, scroll: b.scroll, linger: b.linger,
+          eyebrow: c.eyebrow, title: c.title, body: c.body, tags: c.tags,
+          cta: c.cta ? { primary: { label: c.cta.primary, href: REPO },
+                         secondary: { label: c.cta.secondary, href: REPO + '#install' } } : undefined,
+        };
+      });
+    }
+
+    mountScrollWorld(document.getElementById('world'), {
+      brand: { name: 'Nibble', href: '#top' },
+      cta: { label: COPY[lang].topCta, href: REPO },
+      hint: COPY[lang].hint,
+      diveScroll: 1.3,
+      crossfade: 0.08,          /* architecture A: legs chain directly, no connectors */
+      sections: sectionsFor(lang),
+      connectors: [],
+      connectorsMobile: [],
+    });
+
+    /* -------- language toggle: patch engine DOM in place (no re-mount) -------- */
+    function applyLang(l) {
+      lang = l;
+      localStorage.setItem('nibble-lang', l);
+      document.documentElement.lang = l === 'zh' ? 'zh-Hant' : 'en';
+      const C = COPY[l];
+      document.querySelectorAll('.sw-copy').forEach((node, i) => {
+        const s = C.sections[i]; if (!s) return;
+        const set = (sel, text) => { const n = node.querySelector(sel); if (n) n.textContent = text; };
+        set('.sw-copy__eyebrow', s.eyebrow);
+        set('.sw-copy__title', s.title);
+        set('.sw-copy__body', s.body);
+        node.querySelectorAll('.sw-copy__tags li').forEach((li, k) => { if (s.tags[k]) li.textContent = s.tags[k]; });
+        if (s.cta) { set('.sw-btn--primary', s.cta.primary); set('.sw-btn--ghost', s.cta.secondary); }
+      });
+      document.querySelectorAll('.sw-nav__item').forEach((n, i) => { if (C.sections[i]) n.textContent = C.sections[i].label; });
+      document.querySelectorAll('.sw-route__label').forEach((n, i) => { if (C.sections[i]) n.textContent = C.sections[i].label; });
+      const hint = document.querySelector('.sw-hint span'); if (hint) hint.textContent = C.hint;
+      const top = document.querySelector('.sw-topcta'); if (top) top.textContent = C.topCta;
+      btn.textContent = l === 'zh' ? 'EN' : '中文';
+    }
+
+    const btn = document.createElement('button');
+    btn.className = 'nb-lang';
+    btn.setAttribute('aria-label', 'switch language');
+    btn.addEventListener('click', () => applyLang(lang === 'zh' ? 'en' : 'zh'));
+    btn.textContent = lang === 'zh' ? 'EN' : '中文';
+    const topbar = document.querySelector('.sw-topbar');
+    const topcta = document.querySelector('.sw-topcta');
+    if (topbar) topbar.insertBefore(btn, topcta || null);
+  </script>
+</body>
+</html>

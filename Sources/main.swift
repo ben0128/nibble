@@ -1,7 +1,7 @@
 // main.swift — 入口與 argv 解析（零依賴，手寫解析）
 import Foundation
 
-let NIBBLE_VERSION = "0.7.0"
+let NIBBLE_VERSION = "0.8.0"
 
 let arguments = CommandLine.arguments.dropFirst()
 let command = arguments.first ?? "help"

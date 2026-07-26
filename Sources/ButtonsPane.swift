@@ -8,6 +8,7 @@ struct ButtonRow {
     let index: Int          // 0-based 鍵序（G(index+1)）
     let name: String
     let remappable: Bool
+    var cid: UInt16? = nil        // MX 路徑用（G 系為 nil）
     var action: ButtonAction?
 }
 
@@ -24,6 +25,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     private var spyTransport: ReceiverTransport?
     private var spyIdx: UInt8 = 0
     private var prevMask: UInt16 = 0
+    private var divertedForLearn: [UInt16] = []
 
     /// spy 事件 bitmask 的 bit → 列序。位序若被實測推翻，只改這裡。
     static func bitToRow(_ bit: Int) -> Int { bit }
@@ -89,9 +91,9 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             } else if dev.has(0x1b04) {
                 for (i, c) in (try dev.controls()).enumerated() {
                     let nm = HIDPP.cidNames[c.cid] ?? String(format: "CID 0x%04X", c.cid)
-                    out.append(ButtonRow(index: i, name: nm, remappable: c.divertable, action: saved[nm]))
+                    out.append(ButtonRow(index: i, name: nm, remappable: c.divertable, cid: c.cid, action: saved[nm]))
                 }
-                onStatus?("MX 系（0x1b04）改鍵引擎尚未實作——清單唯讀")
+
             }
             rows = out
             table.reloadData()
@@ -136,20 +138,28 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     private func startLearn() {
         do {
             let (dev, _) = try uiOpenDevice(preferred: 1)
-            guard dev.has(0x8110), let idx = try dev.featureIndex(of: 0x8110),
-                  let tr = dev.transport as? ReceiverTransport else {
-                onStatus?("此裝置不支援按鍵定位（僅 G 系 0x8110）")
+            guard let tr = dev.transport as? ReceiverTransport else { return }
+            if dev.has(0x8110), let idx = try dev.featureIndex(of: 0x8110) {
+                spyIdx = idx
+                prevMask = 0
+                try dev.buttonSpyStart()
+                tr.onReport = { [weak self] p in self?.handleSpy(p) }
+                onStatus?("按滑鼠上的任一顆鍵——對應的列會高亮（順便驗證位序是否正確）")
+            } else if dev.has(0x1b04), let fi = try dev.featureIndex(of: 0x1b04) {
+                // MX 路徑：暫時 divert 所有可 divert 的鍵來聽事件，停止時全部還原
+                spyIdx = fi
+                divertedForLearn = (try dev.controls()).filter(\.divertable).map(\.cid)
+                for cid in divertedForLearn { try? dev.setDivert(cid: cid, on: true) }
+                tr.onReport = { [weak self] p in self?.handleDivertedEvent(p) }
+                onStatus?("按滑鼠上的任一顆鍵——對應的列會高亮（定位期間該鍵暫不作用）")
+            } else {
+                onStatus?("此裝置不支援按鍵定位")
                 return
             }
             spyDev = dev
             spyTransport = tr
-            spyIdx = idx
-            prevMask = 0
-            try dev.buttonSpyStart()
-            tr.onReport = { [weak self] p in self?.handleSpy(p) }
             learning = true
             learnButton.title = "⏹ 停止定位"
-            onStatus?("按滑鼠上的任一顆鍵——對應的列會高亮（順便驗證位序是否正確）")
         } catch {
             onStatus?("❌ \(error)")
         }
@@ -157,12 +167,34 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
     private func stopLearn() {
         spyTransport?.onReport = nil
-        try? spyDev?.buttonSpyStop()
+        if let dev = spyDev {
+            if dev.has(0x8110) { try? dev.buttonSpyStop() }
+            for cid in divertedForLearn { try? dev.setDivert(cid: cid, on: false) }
+        }
+        divertedForLearn = []
         spyDev = nil
         spyTransport = nil
         learning = false
         learnButton.title = "🎯 按實體鍵定位"
         onStatus?("定位結束")
+    }
+
+    /// MX 路徑事件：payload 是目前按住的 CID 清單
+    private func handleDivertedEvent(_ p: [UInt8]) {
+        guard p.count >= 5, p[1] == spyIdx, p[2] == 0x00 else { return }
+        var i = 3
+        while i + 1 < p.count && i < 11 {
+            let cid = UInt16(p[i]) << 8 | UInt16(p[i + 1])
+            if cid != 0, let row = rows.firstIndex(where: { $0.cid == cid }) {
+                highlighted = row
+                table.reloadData()
+                table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                table.scrollRowToVisible(row)
+                onStatus?("偵測到 \(rows[row].name)（CID 0x\(String(format: "%04X", cid))）")
+                return
+            }
+            i += 2
+        }
     }
 
     func teardown() { if learning { stopLearn() } }

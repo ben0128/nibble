@@ -242,6 +242,14 @@ public final class HIDPPDevice {
         public var rawXY: Bool { additional & 0x01 != 0 }
     }
 
+    /// 逐鍵設定 divert：把該 CID 的事件改由軟體接管（runtime，斷電還原）
+    /// fn3 setCidReporting：[cid_hi, cid_lo, flags, ...]，flags bit0=divert、bit1=divert 有效位
+    public func setDivert(cid: UInt16, on: Bool) throws {
+        let flags: UInt8 = on ? 0x03 : 0x02   // 一律帶「有效位」，off 就只送 valid 不送 divert
+        _ = try call(feature: 0x1b04, function: 3,
+                     params: [UInt8(cid >> 8), UInt8(cid & 0xFF), flags, 0, 0, 0, 0])
+    }
+
     /// 列舉裝置上所有可程式化控制——改鍵 UI 的資料來源，換滑鼠自動適配
     public func controls() throws -> [ControlInfo] {
         guard let fi = try featureIndex(of: 0x1b04) else { throw HIDPPError.featureUnsupported(0x1b04) }

@@ -21,7 +21,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var rateItems: [Int: NSMenuItem] = [:]
     private var lastIndex: UInt8 = 1
     private var lastRGB: String?   // 協定無法回讀燈效，追蹤本 session 設過的值
-    private var engine: RemapEngine?
+    private var engine: RemapEngineProtocol?
     private let engineItem = NSMenuItem(title: "改鍵引擎：未啟用", action: nil, keyEquivalent: "")
 
     static let dpiPresets = [400, 800, 1600, 3200, 6400, 12800]
@@ -104,18 +104,14 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 engineItem.title = "改鍵引擎：此裝置（\(devName)）無映射"
                 return
             }
-            var mappings: [Int: ButtonAction] = [:]
-            for (key, action) in devMap where key.hasPrefix("G") {
-                if let n = Int(key.dropFirst()), n >= 3 { mappings[n - 1] = action }   // G1/G2 永不接管
-            }
-            let needsAX = mappings.values.contains { $0.type == "keys" || $0.type == "system" }
+            let needsAX = devMap.values.contains { $0.type == "keys" || $0.type == "system" }
             if needsAX && !axTrusted(promptIfNeeded: true) {
                 engineItem.title = "改鍵引擎：⚠️ 授權「輔助使用」後按重新載入"
                 return
             }
             guard let tr = dev.transport as? ReceiverTransport,
-                  let eng = RemapEngine(transport: tr, dev: dev, mappings: mappings) else {
-                engineItem.title = "改鍵引擎：裝置不支援（無 0x8110）"
+                  let eng = makeRemapEngine(transport: tr, dev: dev, savedMap: devMap) else {
+                engineItem.title = "改鍵引擎：此裝置不支援改鍵（無 0x8110／0x1b04）"
                 return
             }
             try eng.start()

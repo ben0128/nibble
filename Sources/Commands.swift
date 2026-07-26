@@ -572,29 +572,57 @@ func cmdSpy(_ args: [String]) -> Int32 {
 
 func cmdRemap() -> Int32 {
     withDevice { dev, tr in
-        guard dev.has(0x8110) else { print("MX 系（0x1b04 divert）引擎尚未實作——目前支援 G 系"); return 1 }
-        guard let spyIdx = try dev.featureIndex(of: 0x8110) else { return 1 }
         let devName = (try? dev.name()) ?? "unknown"
-        print("按下你要改的滑鼠按鍵…（30 秒逾時；⚠️ 左右鍵 G1/G2 不建議改）")
-        try dev.buttonSpyStart()
-        var captured: Int?
-        var prev: UInt16 = 0
-        tr.onReport = { p in
-            guard p.count >= 5, p[1] == spyIdx, p[2] == 0x00 else { return }
-            let mask = UInt16(p[3]) << 8 | UInt16(p[4])
-            let newly = mask & ~prev
-            prev = mask
-            if captured == nil, newly != 0 {
-                captured = (0..<16).first { newly & (1 << $0) != 0 }
+        var bName: String
+        print("按下你要改的滑鼠按鍵…（30 秒逾時）")
+
+        if dev.has(0x8110) {
+            // G 系：spy bitmask
+            guard let spyIdx = try dev.featureIndex(of: 0x8110) else { return 1 }
+            try dev.buttonSpyStart()
+            var captured: Int?
+            var prev: UInt16 = 0
+            tr.onReport = { p in
+                guard p.count >= 5, p[1] == spyIdx, p[2] == 0x00 else { return }
+                let mask = UInt16(p[3]) << 8 | UInt16(p[4])
+                let newly = mask & ~prev
+                prev = mask
+                if captured == nil, newly != 0 { captured = (0..<16).first { newly & (1 << $0) != 0 } }
             }
+            let deadline = Date().addingTimeInterval(30)
+            while captured == nil && Date() < deadline { CFRunLoopRunInMode(.defaultMode, 0.2, true) }
+            tr.onReport = nil
+            try? dev.buttonSpyStop()
+            guard let btn = captured else { print("沒等到按鍵，取消"); return 1 }
+            if btn <= 1 { print("→ 抓到 G\(btn + 1)（左/右鍵）——拒絕改主鍵，防鎖死"); return 1 }
+            bName = "G\(btn + 1)"
+        } else if dev.has(0x1b04) {
+            // MX 系：暫時 divert 全部可 divert 的鍵來聽事件，結束一律還原
+            guard let fi = try dev.featureIndex(of: 0x1b04) else { return 1 }
+            let controls = try dev.controls()
+            let divertable = controls.filter(\.divertable)
+            guard !divertable.isEmpty else { print("此裝置沒有可 divert 的按鍵"); return 1 }
+            for c in divertable { try? dev.setDivert(cid: c.cid, on: true) }
+            var captured: UInt16?
+            tr.onReport = { p in
+                guard captured == nil, p.count >= 5, p[1] == fi, p[2] == 0x00 else { return }
+                var i = 3
+                while i + 1 < p.count && i < 11 {
+                    let cid = UInt16(p[i]) << 8 | UInt16(p[i + 1])
+                    if cid != 0 { captured = cid; return }
+                    i += 2
+                }
+            }
+            let deadline = Date().addingTimeInterval(30)
+            while captured == nil && Date() < deadline { CFRunLoopRunInMode(.defaultMode, 0.2, true) }
+            tr.onReport = nil
+            for c in divertable { try? dev.setDivert(cid: c.cid, on: false) }
+            guard let cid = captured else { print("沒等到按鍵，取消"); return 1 }
+            bName = HIDPP.cidNames[cid] ?? String(format: "CID 0x%04X", cid)
+        } else {
+            print("此裝置不支援改鍵（無 0x8110／0x1b04）")
+            return 1
         }
-        let deadline = Date().addingTimeInterval(30)
-        while captured == nil && Date() < deadline { CFRunLoopRunInMode(.defaultMode, 0.2, true) }
-        tr.onReport = nil
-        try? dev.buttonSpyStop()
-        guard let btn = captured else { print("沒等到按鍵，取消"); return 1 }
-        let bName = "G\(btn + 1)"
-        if btn <= 1 { print("→ 抓到 \(bName)（左/右鍵）——拒絕改主鍵，防鎖死"); return 1 }
         print("→ 抓到 \(bName)")
         print("動作類型？ [k]快捷鍵 [s]系統動作 [d]還原預設 [x]停用這顆鍵：", terminator: "")
         guard let choice = readLine()?.lowercased().first else { return 1 }
