@@ -48,16 +48,30 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         dpiControl.target = self
         dpiControl.action = #selector(dpiPresetChanged)
         dpiControl.segmentDistribution = .fillEqually
-        dpiCustom.placeholderString = "Custom (50–25600)"
+        // 欄位只需容納 5 位數；全寬的輸入框會讓人以為要填長字串
+        dpiCustom.placeholderString = "50–25600"
         dpiCustom.target = self
         dpiCustom.action = #selector(dpiCustomCommitted)
-        dpiCustom.font = .systemFont(ofSize: 12)
+        dpiCustom.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        dpiCustom.alignment = .right
+        dpiCustom.translatesAutoresizingMaskIntoConstraints = false
+        dpiCustom.widthAnchor.constraint(equalToConstant: 74).isActive = true
         replayCheck.target = self
         replayCheck.action = #selector(replayToggled)
         rateControl.target = self
         rateControl.action = #selector(rateChanged(_:))
         rgbControl.target = self
         rgbControl.action = #selector(rgbChanged(_:))
+
+        let customCaption = NSTextField(labelWithString: "Custom")
+        customCaption.font = .systemFont(ofSize: 11)
+        customCaption.textColor = .secondaryLabelColor
+        let customUnit = NSTextField(labelWithString: "dpi")
+        customUnit.font = .systemFont(ofSize: 11)
+        customUnit.textColor = .tertiaryLabelColor
+        let dpiCustomRow = NSStackView(views: [customCaption, dpiCustom, customUnit])
+        dpiCustomRow.spacing = 6
+        dpiCustomRow.alignment = .centerY
 
         // 「斷電就沒了」是必須理解的行為模型，解法（登入重放）就擺在同一段，不再散落各處
         let lifecycle = NSTextField(wrappingLabelWithString:
@@ -69,7 +83,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         startupRow.spacing = 12
 
         let generalStack = NSStackView(views: [
-            sectionLabel("DPI"), dpiControl, dpiCustom,
+            sectionLabel("DPI"), dpiControl, dpiCustomRow,
             sectionLabel("Report rate (Hz)"), rateControl, rateNote,
             sectionLabel("Lighting"), rgbControl, rgbNote,
             NSBox(), lifecycle, startupRow,
