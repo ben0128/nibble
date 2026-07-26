@@ -178,8 +178,8 @@ Two traps worth knowing when packaging: a `com.apple.FinderInfo` xattr makes `co
 ## Architecture
 
 ```
-Sources/HIDPP.swift           protocol core — no IOKit import (portable, testable)
-Sources/Transport.swift       IOKit HID transport (the only IOKit file)
+Sources/HIDPP.swift           protocol core + the HIDPPTransport seam — no IOKit import
+Sources/Transport.swift       IOKit HID transport, and openHIDPPTransports() (the only IOKit file)
 Sources/Commands.swift        CLI commands + shared UI helpers
 Sources/Engine.swift          remap engines (G spy / MX divert) behind one protocol
 Sources/Actions.swift         keystroke + system action synthesis
@@ -195,6 +195,8 @@ Sources/Version.swift         one version constant, readable from the test build
 Sources/main.swift            argv dispatch
 Tests/main.swift              the suite; Tests/mutate.py audits whether it protects anything
 ```
+
+Everything above `Transport.swift` talks to the `HIDPPTransport` protocol — request/response, the connection's shape (`isDirect`, `longOnly`, `productID`), and the inbound event stream (`onReport`, `onRemoval`). Discovery goes through one free function, `openHIDPPTransports()`, provided by whichever platform file is in the build. So a port replaces one file and implements one protocol; the protocol layer, the CLI and the remap engines don't change. The test suite exercises them through a mock transport, which is how device discovery and engine selection are covered without a mouse.
 
 Protocol notes for G-series: battery is `0x1001` BatteryVoltage (millivolts + LiPo curve), not `0x1000`/`0x1004`. Onboard sectors are 255 B (not 16-aligned) — read the tail with an overlapping read at `sectorSize-16`.
 

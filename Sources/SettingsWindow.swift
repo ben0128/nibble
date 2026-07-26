@@ -424,7 +424,8 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             let dev = try openDevice()
             deviceLabel.stringValue = (try? dev.name()) ?? "Logitech #\(lastIndex)"
             updateBattery(dev)
-            if let tr = dev.transport as? ReceiverTransport {
+            do {
+                let tr = dev.transport
                 // 連線細節屬於除錯資訊，放 hover；表頭留給名字和電量
                 deviceLabel.toolTip = String(format: "%@ 046D:%04X · device index %d · HID++",
                                              tr.isDirect ? "bluetooth-direct" : "receiver",

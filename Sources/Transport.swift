@@ -23,6 +23,11 @@ public final class HIDManagerHolder {
     deinit { IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone)) }
 }
 
+/// 平台入口（見 HIDPP.swift 的平台契約）：macOS 走 IOKit
+func openHIDPPTransports() throws -> [HIDPPTransport] {
+    try ReceiverTransport.openAll()
+}
+
 public final class ReceiverTransport: HIDPPTransport {
     // ⚠️ manager 一定要跟裝置活得一樣久：被 ARC 釋放會拆掉 input report 管線
     //（SetReport 卻照常成功——症狀是「送得出去、永遠收不到」）

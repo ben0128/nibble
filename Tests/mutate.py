@@ -49,6 +49,12 @@ MUTATIONS = [
   "return Battery(millivolts: nil, percent: Int(r[1]), charging: r[2] != 0, source: \"0x1000\")"),
  ("feature-cache-disabled", "HIDPP.swift", "if let hit = featureCache[feature] { return hit == 0 ? nil : hit }",
   "if let hit = featureCache[feature], hit == 200 { return hit == 0 ? nil : hit }"),
+ # ---- discovery / engine selection (only reachable since the transport decoupling) ----
+ ("discover-no-wired-fallback", "Commands.swift", "    if out.isEmpty {\n        let d = HIDPPDevice(transport: tr, index: 0xFF)",
+  "    if false {\n        let d = HIDPPDevice(transport: tr, index: 0xFF)"),
+ ("discover-probes-direct-anyway", "Commands.swift", "    if tr.isDirect {\n        let d = HIDPPDevice(transport: tr, index: 0xFF)",
+  "    if false {\n        let d = HIDPPDevice(transport: tr, index: 0xFF)"),
+ ("engine-built-without-mappings", "Engine.swift", "guard !savedMap.isEmpty else { return nil }", "guard true else { return nil }"),
  # ---- spy button map ----
  ("spy-allows-primary", "Engine.swift", "if let n = Int(key.dropFirst()), n >= 3 { m[n - 1] = action }",
   "if let n = Int(key.dropFirst()), n >= 1 { m[n - 1] = action }"),

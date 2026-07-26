@@ -39,7 +39,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     private var learning = false
     private var highlighted: Int?
     private var spyDev: HIDPPDevice?
-    private var spyTransport: ReceiverTransport?
+    private var spyTransport: HIDPPTransport?
     private var spyIdx: UInt8 = 0
     private var prevMask: UInt16 = 0
     private var divertedForLearn: [UInt16] = []
@@ -535,7 +535,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     private func startLearn() {
         do {
             let (dev, _) = try uiOpenDevice(preferred: 1)
-            guard let tr = dev.transport as? ReceiverTransport else { return }
+            let tr = dev.transport
             if dev.has(0x8110), let idx = try dev.featureIndex(of: 0x8110) {
                 spyIdx = idx
                 prevMask = 0

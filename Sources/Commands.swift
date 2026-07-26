@@ -2,7 +2,7 @@
 import Foundation
 
 /// 掃描一個 transport 上的裝置：接收器探測下掛索引 1–6，直連（藍牙）固定 0xFF
-func discover(_ tr: ReceiverTransport, maxIndex: UInt8 = 6)
+func discover(_ tr: HIDPPTransport, maxIndex: UInt8 = 6)
     -> [(idx: UInt8, dev: HIDPPDevice, ver: (major: Int, minor: Int))] {
     var out: [(idx: UInt8, dev: HIDPPDevice, ver: (major: Int, minor: Int))] = []
     if tr.isDirect {
@@ -24,9 +24,9 @@ func discover(_ tr: ReceiverTransport, maxIndex: UInt8 = 6)
 }
 
 /// 走遍所有 transport（接收器優先），回傳所有醒著的裝置
-func discoverEverything() throws -> [(idx: UInt8, dev: HIDPPDevice, tr: ReceiverTransport, ver: (major: Int, minor: Int))] {
-    var out: [(idx: UInt8, dev: HIDPPDevice, tr: ReceiverTransport, ver: (major: Int, minor: Int))] = []
-    for tr in try ReceiverTransport.openAll() {
+func discoverEverything() throws -> [(idx: UInt8, dev: HIDPPDevice, tr: HIDPPTransport, ver: (major: Int, minor: Int))] {
+    var out: [(idx: UInt8, dev: HIDPPDevice, tr: HIDPPTransport, ver: (major: Int, minor: Int))] = []
+    for tr in try openHIDPPTransports() {
         for hit in discover(tr) { out.append((hit.idx, hit.dev, tr, hit.ver)) }
     }
     return out
@@ -147,9 +147,9 @@ func cmdDoctor() -> Int32 {
         if ok == false, firstFix == nil { firstFix = fix }
     }
 
-    var transports: [ReceiverTransport] = []
+    var transports: [HIDPPTransport] = []
     do {
-        transports = try ReceiverTransport.openAll()
+        transports = try openHIDPPTransports()
         add("input-monitoring", true, "granted")
         let desc = transports.map {
             String(format: "%@ 046D:%04X", $0.isDirect ? "bluetooth" : "receiver", $0.productID)
@@ -272,7 +272,7 @@ func cmdDoctor() -> Int32 {
 
 /// 共用樣板：走遍所有 transport（接收器優先）→ 第一個醒著的裝置 → 執行
 /// 一定要走遍：插著閒置 dongle 時第一個 transport 永遠是接收器，藍牙滑鼠會被擋住
-func withDevice(_ body: (HIDPPDevice, ReceiverTransport) throws -> Int32) -> Int32 {
+func withDevice(_ body: (HIDPPDevice, HIDPPTransport) throws -> Int32) -> Int32 {
     do {
         guard let hit = try discoverEverything().first else {
             print("transport present but no awake device — move the mouse and retry")
@@ -583,7 +583,7 @@ func cmdReplay(_ args: [String]) -> Int32 {
 
 /// 先在第一個 transport 試偏好索引（0.4s 快 ping），失敗才走遍全部（含藍牙直連）
 func uiOpenDevice(preferred: UInt8) throws -> (dev: HIDPPDevice, index: UInt8) {
-    let transports = try ReceiverTransport.openAll()
+    let transports = try openHIDPPTransports()
     if let first = transports.first, !first.isDirect {
         let d = HIDPPDevice(transport: first, index: preferred)
         if (try? d.ping(timeout: 0.4)) != nil { return (d, preferred) }

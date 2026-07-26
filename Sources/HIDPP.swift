@@ -92,10 +92,41 @@ public enum HIDPPError: Error, CustomStringConvertible {
 
 /// Transport 抽象：送一則 HID++ 封包（payload 不含 report ID），等符合 match 的回應。
 /// 回傳值同樣不含 report ID：[devIdx, featIdx, fnsw, params...]
+/// 上層需要的不只是「送一次請求收一次回應」，還要能描述這條連線、以及旁聽裝置主動送出的
+/// report（spy / divert 事件流）。全部放進協定，指令層和引擎層就不必認識任何平台型別——
+/// 這也是測試能用 MockTransport 直接驅動 discover() 和引擎的原因。
+/// 移植到別的平台時要換的是「實作這個協定的類別」加上 openHIDPPTransports()，僅此而已。
 public protocol HIDPPTransport: AnyObject {
     func roundTrip(request payload: [UInt8], preferLong: Bool, timeout: TimeInterval,
                    match: ([UInt8]) -> Bool) throws -> [UInt8]
+
+    /// 直連（藍牙或有線）：device index 用 0xFF，不探測接收器的 1–6
+    var isDirect: Bool { get }
+    /// 只有 long report collection（BLE 直連）：short 請求要升級成 long
+    var longOnly: Bool { get }
+    /// 046D:xxxx —— 只用於顯示與診斷
+    var productID: Int { get }
+    /// 事件旁聽。改鍵引擎靠這個吃 0x8110 spy / 0x1b04 divert 的事件流。
+    /// 刻意要求實作而不給預設值：一個「安靜吞掉事件」的預設會讓依賴它的測試假通過。
+    var onReport: (([UInt8]) -> Void)? { get set }
+    /// 裝置消失（藍牙斷線、接收器被拔掉）。直連路徑沒有接收器的 0x41 通知可用，
+    /// 引擎宿主靠這個拆掉引擎——少了它，引擎看起來在跑但永遠收不到事件。
+    var onRemoval: (() -> Void)? { get set }
 }
+
+/// 連線描述用的預設值——測試替身不必為了編譯而回答這些
+public extension HIDPPTransport {
+    var isDirect: Bool { false }
+    var longOnly: Bool { false }
+    var productID: Int { 0 }
+}
+
+// 平台契約：每個平台的 transport 檔案要提供
+//
+//     func openHIDPPTransports() throws -> [HIDPPTransport]
+//
+// macOS 版在 Transport.swift（IOKit）。Linux 版會是 hidraw，Windows 版是 HidD_*。
+// 指令層只呼叫這個函式，所以「換平台」＝換這個檔案，不動協定層。
 
 public final class HIDPPDevice {
     public let transport: HIDPPTransport

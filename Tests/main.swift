@@ -51,6 +51,15 @@ final class MockTransport: HIDPPTransport {
     var sent: [[UInt8]] = []
     var queued: [[UInt8]] = []
     var preferLongSeen: [Bool] = []
+    // 協定要求實作這兩個 hook（刻意沒有預設值：安靜吞掉事件的預設會讓測試假通過）
+    var onReport: (([UInt8]) -> Void)?
+    var onRemoval: (() -> Void)?
+    /// 直連（藍牙／有線）：discover 應該只問 0xFF，不探測 1–6
+    var directFlag = false
+    var isDirect: Bool { directFlag }
+
+    /// 讓測試模擬「裝置主動送來一則 report」——改鍵引擎的事件流入口
+    func deliver(_ report: [UInt8]) { onReport?(report) }
 
     func roundTrip(request payload: [UInt8], preferLong: Bool, timeout: TimeInterval,
                    match: ([UInt8]) -> Bool) throws -> [UInt8] {
@@ -64,6 +73,66 @@ final class MockTransport: HIDPPTransport {
 /// 組一則回應：[裝置索引, featureIndex, fn<<4|swid, params...]
 func reply(_ dev: UInt8, _ featIdx: UInt8, fn: UInt8, swid: UInt8, _ params: [UInt8]) -> [UInt8] {
     [dev, featIdx, (fn << 4) | swid] + params
+}
+
+// MARK: - 裝置探測（先前綁死 IOKit 型別，測不到；解耦後才能用 MockTransport 驅動）
+
+section("device discovery")
+do {
+    let tr = MockTransport()
+    tr.queued = [reply(1, 0x00, fn: 1, swid: HIDPP.softwareID, [4, 2, 0xAA])]
+    let found = discover(tr, maxIndex: 3)
+    expectEqual(found.count, 1, "discover finds the one awake index")
+    expectEqual(found.first?.idx, 1, "…and reports which index answered")
+    expectEqual(found.first?.ver.major, 4, "…with the HID++ version it reported")
+}
+
+do {
+    // 有線滑鼠（G502 插著充電線）掛在 0xFF00 頁上，但只回應直連索引 0xFF——
+    // 接收器的 1–6 全部沒人時要補問一次，這條 fallback 先前沒有任何測試
+    let tr = MockTransport()
+    tr.queued = [reply(0xFF, 0x00, fn: 1, swid: HIDPP.softwareID, [4, 5, 0xAA])]
+    let found = discover(tr, maxIndex: 3)
+    expectEqual(found.count, 1, "an empty receiver falls back to the direct index")
+    expectEqual(found.first?.idx, 0xFF, "…and reports it as 0xFF")
+}
+
+do {
+    let tr = MockTransport()   // 什麼都不回應
+    expect(discover(tr, maxIndex: 3).isEmpty, "nothing awake means no devices")
+    expectEqual(tr.sent.count, 4, "probes indexes 1–3, then the direct index once")
+}
+
+do {
+    let tr = MockTransport()
+    tr.directFlag = true
+    tr.queued = [reply(0xFF, 0x00, fn: 1, swid: HIDPP.softwareID, [4, 2, 0xAA])]
+    let found = discover(tr, maxIndex: 6)
+    expectEqual(found.count, 1, "a direct transport yields its single device")
+    expectEqual(tr.sent.count, 1, "…without probing receiver indexes 1–6")
+}
+
+// MARK: - 引擎選路（同樣是解耦後才測得到）
+
+section("remap engine selection")
+do {
+    let tr = MockTransport()
+    let dev = HIDPPDevice(transport: tr, index: 1, swid: 0x0A)
+    expect(makeRemapEngine(transport: tr, dev: dev, savedMap: [:]) == nil, "no mappings means no engine")
+    expectEqual(tr.sent.count, 0, "…decided without touching the device")
+}
+
+do {
+    // 有映射但裝置兩種按鍵 feature 都沒有 → 不能硬撐出一個引擎
+    let tr = MockTransport()
+    let dev = HIDPPDevice(transport: tr, index: 1, swid: 0x0A)
+    tr.queued = [
+        reply(1, 0x00, fn: 0, swid: 0x0A, [0x00, 0, 0]),   // 0x8110 不支援
+        reply(1, 0x00, fn: 0, swid: 0x0A, [0x00, 0, 0]),   // 0x1b04 也不支援
+    ]
+    let map = ["G7": ButtonAction(type: "keys", keys: "d", action: nil)]
+    expect(makeRemapEngine(transport: tr, dev: dev, savedMap: map) == nil,
+           "a device with neither button feature gets no engine")
 }
 
 // MARK: - 電池電壓換算

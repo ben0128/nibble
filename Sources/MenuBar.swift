@@ -268,7 +268,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 scheduleEngineRetry()
                 return
             }
-            guard let tr = dev.transport as? ReceiverTransport,
+            guard case let tr = dev.transport,
                   let eng = makeRemapEngine(transport: tr, dev: dev, savedMap: devMap) else {
                 engineItem.title = "Remapping: unsupported device"
                 EngineState.writeStatus(["active": false, "reason": "device exposes neither 0x8110 nor 0x1b04",

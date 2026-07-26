@@ -71,7 +71,7 @@ func parseSpyButtonMap(_ savedMap: [String: ButtonAction]) -> [Int: ButtonAction
 }
 
 /// 依裝置能力自動選路建引擎；config 的鍵名（"G7" 或 CID 名稱）在這裡解析成各自的索引
-func makeRemapEngine(transport: ReceiverTransport, dev: HIDPPDevice,
+func makeRemapEngine(transport: HIDPPTransport, dev: HIDPPDevice,
                      savedMap: [String: ButtonAction]) -> RemapEngineProtocol? {
     guard !savedMap.isEmpty else { return nil }
     if dev.has(0x8110) {
@@ -93,13 +93,13 @@ func makeRemapEngine(transport: ReceiverTransport, dev: HIDPPDevice,
 /// 最多 4 個 16-bit CID，放開時該 CID 從清單消失。
 final class MXRemapEngine: RemapEngineProtocol {
     private let dev: HIDPPDevice
-    private let transport: ReceiverTransport
+    private let transport: HIDPPTransport
     private let featIdx: UInt8
     private let mappings: [UInt16: ButtonAction]   // CID → 動作
     private var pressed: Set<UInt16> = []
     private(set) var active = false
 
-    init?(transport: ReceiverTransport, dev: HIDPPDevice, mappings: [UInt16: ButtonAction]) {
+    init?(transport: HIDPPTransport, dev: HIDPPDevice, mappings: [UInt16: ButtonAction]) {
         guard !mappings.isEmpty, let fi = try? dev.featureIndex(of: 0x1b04) else { return nil }
         self.transport = transport
         self.dev = dev
@@ -153,7 +153,7 @@ final class MXRemapEngine: RemapEngineProtocol {
 
 final class RemapEngine: RemapEngineProtocol {
     private let dev: HIDPPDevice
-    private let transport: ReceiverTransport
+    private let transport: HIDPPTransport
     private let spyIdx: UInt8
     private let mappings: [Int: ButtonAction]   // 0-based 鍵序 → 動作
     private var original: [UInt8] = []          // 進場前的 remap 表（退場還原）
@@ -163,7 +163,7 @@ final class RemapEngine: RemapEngineProtocol {
     private var lastFiredLog = Date.distantPast
     private(set) var active = false
 
-    init?(transport: ReceiverTransport, dev: HIDPPDevice, mappings: [Int: ButtonAction]) {
+    init?(transport: HIDPPTransport, dev: HIDPPDevice, mappings: [Int: ButtonAction]) {
         // try? 把 UInt8?? 攤平成 UInt8?：nil = 查詢失敗或不支援
         guard !mappings.isEmpty, let spy = try? dev.featureIndex(of: 0x8110) else { return nil }
         self.transport = transport
