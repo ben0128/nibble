@@ -6,6 +6,8 @@ Lightweight, zero-dependency Logitech mouse control for macOS. Single binary, un
 
 > G HUB is a 4 GB install. Nibble is under 1 MB.
 
+Replaces **Logitech G HUB** and **Logi Options+** for what most people actually use them for: DPI, report rate, battery level, button remapping. If you know **Solaar** or **logiops** from Linux, this is the macOS counterpart — raw **HID++ 2.0** over IOKit, no vendor software installed.
+
 ## Requirements
 
 - macOS 13 or later, Swift toolchain (`xcode-select --install`)
@@ -195,6 +197,28 @@ Tests/main.swift              the suite; Tests/mutate.py audits whether it prote
 ```
 
 Protocol notes for G-series: battery is `0x1001` BatteryVoltage (millivolts + LiPo curve), not `0x1000`/`0x1004`. Onboard sectors are 255 B (not 16-aligned) — read the tail with an overlapping read at `sectorSize-16`.
+
+## Alternatives
+
+Honest comparison, including where Nibble is the wrong choice:
+
+| | Runs on | Size | What it's for |
+|---|---|---|---|
+| **Nibble** | macOS 13+ | under 1 MB | DPI, report rate, battery voltage, button remap with profiles and macros, onboard backup. CLI + menu bar + native window. |
+| Logitech **G HUB** | macOS, Windows | ~4 GB | Everything, including onboard profile *writing*, per-game profiles, RGB effects editor, firmware updates. Nibble does none of those. |
+| **Logi Options+** | macOS, Windows | ~800 MB | MX-series focus: SmartShift, gestures, Flow, per-app buttons. Nibble has none of the gesture or Flow features. |
+| **Solaar** | Linux | — | The closest analogue: HID++ device settings for Unifying/Bolt/Lightspeed receivers. Python + GTK, and Linux only. |
+| **logiops** | Linux | — | A resident daemon for HID++ gestures and button mapping. Nibble's remap engine is opt-in, not a daemon. |
+| **BetterMouse**, **SteerMouse**, **USB Overdrive** | macOS | — | Paid pointer/scroll/button tools that work at the macOS input layer for *any* mouse. They don't speak HID++, so they can't set DPI on the device or read its battery. |
+| **Mos** | macOS | — | Scroll smoothing and direction only. Nibble doesn't touch scrolling. |
+
+Nibble deliberately does **not** write onboard flash (read-only backup instead), edit RGB effect *patterns*, update firmware, support keyboards, or run gestures.
+
+### If you searched for one of these
+
+Logitech mouse control for macOS without G HUB · G HUB alternative for Mac · Logi Options+ alternative · uninstall G HUB but keep DPI · set Logitech DPI from the terminal · Logitech report rate 1000 Hz macOS · check Logitech mouse battery in the macOS menu bar · G502 battery percentage Mac · MX Master 3 battery macOS · remap Logitech mouse buttons on macOS · Logitech side buttons keyboard shortcut Mac · Logitech macro without G HUB · Solaar for macOS · logiops for Mac · HID++ 2.0 Swift · IOKit HIDPP example · Lightspeed / Unifying / Bolt receiver macOS · turn off Logitech RGB to save battery · `brew install` Logitech mouse tool
+
+Devices this is built for: **G502 LIGHTSPEED / G502 X / G Pro Wireless / G703 / G903** and other G-series over a Lightspeed receiver, plus **MX Master 3 / 3S / MX Anywhere / MX Vertical** over Bluetooth or a Unifying/Bolt receiver. Any Logitech mouse speaking HID++ 2.0 enumerates its own buttons, so it works without per-model support.
 
 ## License
 
