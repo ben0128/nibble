@@ -28,7 +28,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private let replayCheck = NSButton(checkboxWithTitle: "Re-apply my settings at login", target: nil, action: nil)
     private let statusLabel = NSTextField(labelWithString: " ")
     private var lastIndex: UInt8 = 1
-    private var lastRGB: String?
+    private var lastRGB: String? = lastKnownRGB()
     private let buttonsPane = ButtonsPane()
     private var headerTimer: Timer?
     var initialTab: String?
@@ -255,7 +255,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private func showLighting() {
         if let kind = lastRGB, let i = Self.rgbKinds.firstIndex(of: kind) {
             rgbControl.selectedSegment = i
-            rgbNote.stringValue = ""
+            rgbNote.stringValue = "Last applied by Nibble — the mouse can't confirm it"
         } else {
             rgbControl.selectedSegment = -1
             rgbNote.stringValue = "Current effect is unknown — the mouse can't report it back"

@@ -79,7 +79,7 @@ Exit codes: `0` ok · `1` no awake device or value not applied · `2` transport/
 |---|---|---|
 | `dpi` | int | 50–25600 |
 | `reportRateHz` | int | 125 / 250 / 500 / 1000 |
-| `rgb` | string | `"off"` or `"keep"` |
+| `rgb` | string | `"off"`, `"cycle"`, `"breathing"`, or `"keep"` |
 | `wheelMode` | string | `"free"` / `"ratchet"` (MX-series only) |
 | `wheelThreshold` | int | 1–254 |
 

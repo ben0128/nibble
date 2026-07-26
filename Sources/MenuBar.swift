@@ -48,7 +48,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var rateItems: [Int: NSMenuItem] = [:]
     private var rgbItems: [String: NSMenuItem] = [:]
     private var lastIndex: UInt8 = 1
-    private var lastRGB: String?   // 協定無法回讀燈效，追蹤本 session 設過的值
+    private var lastRGB: String? = lastKnownRGB()   // 協定無法回讀，改用設定檔記著的最後套用值
     private var engine: RemapEngineProtocol?
     private var lowBatteryNotified = false
     private var refreshing = false

@@ -481,9 +481,11 @@ func cmdApply() -> Int32 {
             let got = (try? dev.setReportRateHz(hz)) ?? -1
             print(" rate \(hz)Hz \(got == hz ? "✓" : "✗ (read back \(got))")"); if got != hz { failures += 1 }
         }
-        if cfg.rgb == "off" {
-            if let log = try? dev.rgbOff() { print(" rgb off ✓ (\(log.count) zones)") }
-            else { print(" rgb off ✗"); failures += 1 }
+        // rgb 可以是 off / cycle / breathing（keep 或未設就不動）
+        if let kind = cfg.rgb, kind != "keep" {
+            if let applied = try? uiSetRGB(dev, kind: kind), applied > 0 {
+                print(" rgb \(kind) ✓ (\(applied) zones)")
+            } else { print(" rgb \(kind) ✗"); failures += 1 }
         }
         if let wm = cfg.wheelMode {
             if (try? dev.setWheel(freespin: wm == "free", threshold: cfg.wheelThreshold)) != nil {
@@ -578,8 +580,15 @@ func uiSaveConfig(_ dev: HIDPPDevice, rgb: String?) throws {
     var cfg = loadConfig() ?? BMConfig()
     cfg.dpi = try? dev.currentDPI()
     cfg.reportRateHz = try? dev.reportRateHz()
-    cfg.rgb = rgb == "off" ? "off" : (cfg.rgb ?? "keep")
+    cfg.rgb = rgb ?? cfg.rgb ?? "keep"   // 具名燈效也要存得下，不是只有 off
     try saveConfig(cfg)
+}
+
+/// 燈效無法回讀，但設定檔記著我們最後套用的值——開機時用它當已知狀態
+let nibbleRGBKinds = ["off", "cycle", "breathing"]
+func lastKnownRGB() -> String? {
+    guard let v = loadConfig()?.rgb, nibbleRGBKinds.contains(v) else { return nil }
+    return v
 }
 
 @discardableResult
