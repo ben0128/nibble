@@ -1,8 +1,8 @@
 class Nibble < Formula
   desc "Lightweight, zero-dependency Logitech mouse control for macOS"
   homepage "https://github.com/ben0128/nibble"
-  url "https://github.com/ben0128/nibble/archive/refs/tags/v1.7.0.tar.gz"
-  sha256 "fd05bcdc24a327d8eaa1871f42ddca954df88ca8cab30b747c2c92b501878aaa"
+  url "https://github.com/ben0128/nibble/archive/refs/tags/v1.7.1.tar.gz"
+  sha256 "fe11b090ad2ea0f7c5cdbdd0c65e00a06d6e9eb47a68238390a87a0bd620ca6b"
   license "MIT"
   head "https://github.com/ben0128/nibble.git", branch: "main"
 
