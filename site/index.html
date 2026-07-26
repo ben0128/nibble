@@ -117,6 +117,7 @@
     .term pre {
       margin: 0; padding: 18px 20px 22px; line-height: 1.6; overflow-x: auto;
       height: 340px; overflow-y: auto;             /* fixed card height: new lines scroll, the card never grows */
+      white-space: normal;                          /* source newlines between hidden lines must not render as blank rows */
       scrollbar-width: thin; scrollbar-color: var(--line) transparent;
     }
     .term pre::-webkit-scrollbar { width: 8px; }
@@ -496,7 +497,11 @@ make
     // commands after the first gap animate in.
     const start = lines.findIndex(l => l.classList.contains('gap')) + 1;
     lines.slice(start).forEach(l => l.classList.add('hide'));
-    const pin = () => { term.scrollTop = term.scrollHeight; };  // keep the latest line in view, like a real terminal
+    term.scrollTop = 0;                       // always open at the top
+    const pin = () => {                       // ease toward the newest line; never jump
+      const target = term.scrollHeight - term.clientHeight;
+      if (target > term.scrollTop + 1) term.scrollTo({ top: target, behavior: 'smooth' });
+    };
     let i = start;
     function next() {
       if (i >= lines.length) return;
