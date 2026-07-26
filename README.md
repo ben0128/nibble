@@ -18,7 +18,7 @@ Lightweight, zero-dependency Logitech mouse control for macOS. Single 530 KB bin
 git clone https://github.com/ben0128/nibble && cd nibble
 make                      # build ./nibble
 sudo make install         # optional: /usr/local/bin/nibble
-make app                  # optional: Nibble.app (menu bar on double-click, enables notifications)
+make install-app          # optional: /Applications/Nibble.app (menu bar app + notifications)
 ./nibble status
 ```
 
@@ -32,7 +32,9 @@ brew install nibble
 
 First run needs **Input Monitoring** permission: System Settings → Privacy & Security → Input Monitoring → enable your terminal app → re-run. Error `0xE00002E2` means this permission is missing. No restart needed after granting.
 
-Button remapping additionally needs **Accessibility** permission (to synthesize keyboard/media events): the host app of `nibble menubar` prompts on first engine start.
+Button remapping additionally needs **Accessibility** permission (to synthesize keyboard and media events). Grant it to whichever app hosts the engine — normally `/Applications/Nibble.app`. The engine retries on its own, so the remaps start working seconds after you flip the switch; no restart.
+
+If remaps do nothing, run `nibble doctor` — it reports whether the engine is running and why not.
 
 ## Commands
 
@@ -108,6 +110,20 @@ Mappings are stored per device name under `buttonMaps` and executed by the menu 
 | HID++ error `0x02` on write | Onboard mode rejects it → handled by automatic host-mode fallback |
 | Receiver not found | Requires USB device with vendor `0x046D` + HID usage page `0xFF00` |
 | Writes send but no replies ever arrive | If hacking on the code: IOHIDManager must outlive the device object |
+
+## Development
+
+`make app` signs the bundle with a self-signed identity named `Nibble Dev` if one exists in your keychain, falling back to ad-hoc. This matters: ad-hoc signatures change their cdhash on every rebuild, so macOS treats each build as a new app and **drops the Accessibility grant**. With a stable identity the grant survives rebuilds. To create one:
+
+```sh
+/usr/bin/openssl req -x509 -newkey rsa:2048 -keyout /tmp/ns.key -out /tmp/ns.crt -days 3650 -nodes \
+  -subj "/CN=Nibble Dev" -addext "basicConstraints=critical,CA:false" \
+  -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=critical,codeSigning"
+/usr/bin/openssl pkcs12 -export -out /tmp/ns.p12 -inkey /tmp/ns.key -in /tmp/ns.crt -passout pass:nibble -name "Nibble Dev"
+security import /tmp/ns.p12 -k ~/Library/Keychains/login.keychain-db -P nibble -T /usr/bin/codesign -A
+```
+
+Two traps worth knowing when packaging: a `com.apple.FinderInfo` xattr makes `codesign` refuse to seal the bundle — it signs only the inner binary and reports `Identifier=nibble` instead of the bundle id — and `cp -R` breaks the seal where `ditto` preserves it. The Makefile handles both.
 
 ## Architecture
 
