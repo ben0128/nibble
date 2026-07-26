@@ -114,7 +114,14 @@
     .term-bar i { width: 11px; height: 11px; border-radius: 50%; background: var(--line); }
     .term-bar i:nth-child(1) { background: #F7605A; } .term-bar i:nth-child(2) { background: #FBBD2E; } .term-bar i:nth-child(3) { background: #35C749; }
     .term-bar span { margin-left: auto; font: 500 .74rem var(--mono); color: var(--soft); }
-    .term pre { margin: 0; padding: 18px 20px 22px; line-height: 1.75; overflow-x: auto; }
+    .term pre {
+      margin: 0; padding: 18px 20px 22px; line-height: 1.75; overflow-x: auto;
+      height: 340px; overflow-y: auto;             /* fixed card height: new lines scroll, the card never grows */
+      scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+    }
+    .term pre::-webkit-scrollbar { width: 8px; }
+    .term pre::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+    .term pre::-webkit-scrollbar-track { background: transparent; }
     .t-line { display: block; white-space: pre; }
     .t-line.hide { display: none; }
     .p { color: var(--accent); }        /* prompt $ */
@@ -464,13 +471,16 @@ make
   /* ------- terminal typing (progressive; instant under reduced motion) ------- */
   (function () {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const lines = Array.from(document.querySelectorAll('#term .t-line'));
+    const term = document.getElementById('term');
+    const lines = Array.from(term.querySelectorAll('.t-line'));
     lines.forEach(l => l.classList.add('hide'));
+    const pin = () => { term.scrollTop = term.scrollHeight; };  // keep the latest line in view, like a real terminal
     let i = 0;
     function next() {
       if (i >= lines.length) return;
       const line = lines[i++];
       line.classList.remove('hide');
+      pin();
       const cmd = line.querySelector('.c');
       if (cmd) {
         const full = cmd.textContent;
@@ -478,6 +488,7 @@ make
         let k = 0;
         (function type() {
           cmd.textContent = full.slice(0, ++k);
+          pin();
           if (k < full.length) setTimeout(type, 34);
           else setTimeout(next, 260);
         })();
