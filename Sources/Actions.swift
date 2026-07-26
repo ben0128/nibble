@@ -53,15 +53,41 @@ func parseCombo(_ combo: String) -> (CGEventFlags, CGKeyCode)? {
     return (flags, k)
 }
 
+/// 修飾鍵的虛擬鍵碼，用來送出真正的按下／放開事件
+private let modifierKeys: [(CGEventFlags, CGKeyCode)] = [
+    (.maskControl, 59), (.maskAlternate, 58), (.maskShift, 56), (.maskCommand, 55),
+]
+
+/// 完整模擬一次組合鍵：修飾鍵先按下 → 主鍵 → 修飾鍵放開。
+/// 只在主鍵事件掛 flags 對多數 App 有效，但註冊全域熱鍵的 App（Raycast、Alfred…）
+/// 常常要看到修飾鍵本身的事件才會觸發。
 @discardableResult
 func postKeystroke(_ combo: String) -> Bool {
-    guard let (flags, key) = parseCombo(combo),
-          let down = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: true),
-          let up = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: false) else { return false }
+    guard let (flags, key) = parseCombo(combo) else { return false }
+    let src = CGEventSource(stateID: .hidSystemState)
+    var held: CGEventFlags = []
+
+    for (flag, code) in modifierKeys where flags.contains(flag) {
+        held.insert(flag)
+        if let e = CGEvent(keyboardEventSource: src, virtualKey: code, keyDown: true) {
+            e.flags = held
+            e.post(tap: .cghidEventTap)
+        }
+    }
+    guard let down = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: true),
+          let up = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: false) else { return false }
     down.flags = flags
     up.flags = flags
     down.post(tap: .cghidEventTap)
     up.post(tap: .cghidEventTap)
+
+    for (flag, code) in modifierKeys.reversed() where flags.contains(flag) {
+        held.remove(flag)
+        if let e = CGEvent(keyboardEventSource: src, virtualKey: code, keyDown: false) {
+            e.flags = held
+            e.post(tap: .cghidEventTap)
+        }
+    }
     return true
 }
 
