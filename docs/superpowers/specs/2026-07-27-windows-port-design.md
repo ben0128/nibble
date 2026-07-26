@@ -122,7 +122,7 @@ Scoop manifest 用 `checkver`/`autoupdate` 盯 `win-v*` release；zip 內容 = �
 | `windows-sys` API 版本漂移 | 鎖定 crate 版本；簽章以官方 samples 為準 |
 | G HUB／OMM 同時在跑時的裝置存取衝突 | doctor 檢查 + 實測；HID 共享開啟預期可行但未驗 |
 | Win11 ARM 的 x64 模擬跑我們的 x64 zip | M3 前在 VM 驗一次 x64 版 |
-| 「幾百 KB」是估計 | M1 第一次建置就量（`opt-level="z"` + lto + strip + 靜態 CRT），數字進 README 才准寫 |
+| 「幾百 KB」是估計 | **已量**：CI 的 windows runner 上 m0-probe.exe（release、完整 SetupDi/HID stack）= 123 KB。正式 CLI/tray 會再加 nibble-core + serde，但量級已證實 |
 | 競品：Windows 已有 openlogi-net、Mouser、官方 OMM | 差異化押在 v1.x 的 G 系改鍵 + `--json`；v1.0 自知只是立足點 |
 
 ## 9. macOS 端前置工作（進入 M1 前）

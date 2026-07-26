@@ -48,3 +48,11 @@ jobs:
       - run: cargo build --release -p m0-probe
       - name: probe size — the size claim gets measured, never assumed
         run: Get-Item target/release/m0-probe.exe | Format-List Name, Length
+      # M0 的免工具鏈路徑：Ben 的 VM 直接從 Actions 下載這個 exe 跑，
+      # 不必在 VM 裡裝 Rust + VS Build Tools。x64 版在 Win11 ARM 的模擬層執行——
+      # 這同時驗掉 spec §8「x64-under-emulation」那條風險。
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m0-probe-x64
+          path: windows/target/release/m0-probe.exe
+          retention-days: 30
