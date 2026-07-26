@@ -1,8 +1,8 @@
 # Nibble 🖱️
 
-Lightweight, zero-dependency Logitech mouse control for macOS. Single 256 KB binary. No daemon, no telemetry, no account.
+Lightweight, zero-dependency Logitech mouse control for macOS. Single 516 KB binary. No daemon, no telemetry, no account.
 
-> G HUB is a 4 GB install. Nibble is 256 KB.
+> G HUB is a 4 GB install. Nibble is 516 KB.
 
 ## Requirements
 
@@ -112,8 +112,13 @@ Mappings are stored per device name under `buttonMaps` and executed by the menu 
 Sources/HIDPP.swift           protocol core — no IOKit import (portable, testable)
 Sources/Transport.swift       IOKit HID transport (the only IOKit file)
 Sources/Commands.swift        CLI commands + shared UI helpers
+Sources/Engine.swift          remap engines (G spy / MX divert) behind one protocol
+Sources/Actions.swift         keystroke + system action synthesis
 Sources/MenuBar.swift         interactive NSStatusItem menu (opt-in resident)
 Sources/SettingsWindow.swift  native AppKit settings panel (quits on close)
+Sources/ButtonsPane.swift     Buttons tab: device-enumerated remap table
+Sources/KeyRecorder.swift     press-a-key shortcut recorder
+Sources/L10n.swift            bilingual strings + --json output
 Sources/main.swift            argv dispatch
 ```
 
@@ -121,7 +126,11 @@ Protocol notes for G-series: battery is `0x1001` BatteryVoltage (millivolts + Li
 
 ## 中文速覽
 
-macOS 原生、零依賴的羅技滑鼠控制工具。指令見上表。首次執行：系統設定 → 隱私權與安全性 → 輸入監控 → 授權你的終端機。所有寫入皆為 runtime（斷電回復），`nibble replay install` 登入時自動重放；`nibble menubar` 是互動選單列，`nibble ui` 是關窗即退的原生設定面板。
+macOS 原生、零依賴的羅技滑鼠控制工具，系統語言為中文時介面自動顯示中文。
+
+首次執行：系統設定 → 隱私權與安全性 → 輸入監控 → 授權你的終端機。**卡住就先跑 `nibble doctor`**，它會逐項檢查權限、接收器、裝置、設定檔、改鍵引擎，並直接告訴你怎麼修。
+
+所有寫入皆為 runtime（滑鼠斷電即回復），`nibble replay install` 會在登入時自動重放你的設定。介面有兩套：`nibble menubar` 互動選單列（同時是改鍵引擎宿主），`nibble ui` 關窗即退的原生設定面板。
 
 ## License
 
