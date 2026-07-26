@@ -90,14 +90,17 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         dpiCustomRow.spacing = 6
         dpiCustomRow.alignment = .centerY
 
-        // 「斷電就沒了」是必須理解的行為模型，解法（登入重放）就擺在同一段，不再散落各處
-        let lifecycle = NSTextField(wrappingLabelWithString:
-            "Changes apply instantly and are lost when the mouse powers off.")
-        lifecycle.font = .systemFont(ofSize: 11)
-        lifecycle.textColor = .secondaryLabelColor
+        // 「斷電就沒了」與它的解法擺在一起，說明收進勾選框旁的「?」
         let saveBtn = NSButton(title: "Save current as my settings", target: self, action: #selector(saveAction))
-        let startupRow = NSStackView(views: [replayCheck, saveBtn])
-        startupRow.spacing = 12
+        let startupRow = NSStackView(views: [
+            replayCheck,
+            nibbleHelpBadge("Everything on this tab is written to the mouse immediately, and lost when it powers "
+                          + "off — the mouse falls back to its onboard profile. Ticking this re-applies your saved "
+                          + "settings at login."),
+            saveBtn,
+        ])
+        startupRow.spacing = 10
+        startupRow.alignment = .centerY
 
         let generalStack = NSStackView(views: [
             sectionLabel("DPI"), dpiControl, dpiCustomRow,
@@ -106,7 +109,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
                              help: "Lighting can't be read back from the mouse — Nibble shows the last effect it applied. "
                                  + "A power cycle returns the mouse to its onboard profile."),
             rgbControl,
-            NSBox(), lifecycle, startupRow,
+            NSBox(), startupRow,
         ])
         generalStack.orientation = .vertical
         generalStack.alignment = .leading
