@@ -323,11 +323,12 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         if tableColumn?.identifier.rawValue == "col-btn" {
             text = (highlighted == row ? "▶ " : "") + r.name
         } else if let a = r.action {
+            // 不加圖示：⌨ 在這個字級只會畫成一個小方塊，而值本身已經說明了類型
+            // （有逗號的是巨集、單字的是系統動作）
             switch a.type {
-            case "keys": text = "⌨ \(a.keys ?? "")"
-            case "macro": text = "⏩ \(a.keys ?? "")"
-            case "system": text = "⚙ \(a.action ?? "")"
-            default: text = "🚫 disabled"
+            case "keys", "macro": text = a.keys ?? ""
+            case "system": text = a.action ?? ""
+            default: text = "disabled"
             }
         } else {
             text = r.remappable ? "—" : "(system)"
