@@ -50,30 +50,48 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         ctx.addItem(clearItem)
         table.menu = ctx
 
+        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+
         let scroll = NSScrollView()
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
+        scroll.autohidesScrollers = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.heightAnchor.constraint(equalToConstant: 220).isActive = true
-        scroll.widthAnchor.constraint(equalToConstant: 428).isActive = true
+        // 只給最小高度，其餘交給約束拉伸——寫死尺寸就是先前分頁溢出的原因
+        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
+        scroll.setContentHuggingPriority(.defaultLow, for: .vertical)
 
         learnButton.target = self
         learnButton.action = #selector(toggleLearn)
         let editBtn = NSButton(title: "Edit selected…", target: self, action: #selector(editSelected))
         let row = NSStackView(views: [learnButton, editBtn])
         row.spacing = 8
+        row.translatesAutoresizingMaskIntoConstraints = false
 
         hintLabel.font = .systemFont(ofSize: 11)
         hintLabel.textColor = .secondaryLabelColor
+        hintLabel.lineBreakMode = .byTruncatingTail
         hintLabel.stringValue = "Remaps run in the menu bar app · right-click a row to clear · G1/G2 locked"
+        hintLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let stack = NSStackView(views: [scroll, row, hintLabel])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
-        stack.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 10, right: 14)
-        return stack
+        let container = NSView()
+        for v in [scroll, row, hintLabel] as [NSView] { container.addSubview(v) }
+        NSLayoutConstraint.activate([
+            scroll.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
+            scroll.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
+            scroll.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
+
+            row.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 10),
+            row.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
+            row.trailingAnchor.constraint(lessThanOrEqualTo: scroll.trailingAnchor),
+
+            hintLabel.topAnchor.constraint(equalTo: row.bottomAnchor, constant: 8),
+            hintLabel.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
+            hintLabel.trailingAnchor.constraint(equalTo: scroll.trailingAnchor),
+            hintLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
+        ])
+        return container
     }
 
     private func withTitle(_ title: String, _ id: String, _ width: CGFloat) -> NSTableColumn {

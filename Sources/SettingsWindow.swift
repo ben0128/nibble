@@ -59,13 +59,13 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         generalStack.orientation = .vertical
         generalStack.alignment = .leading
         generalStack.spacing = 8
-        generalStack.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 12, right: 16)
         if let box = generalStack.views.first(where: { $0 is NSBox }) as? NSBox { box.boxType = .separator }
 
         let tabs = NSTabView()
+        tabs.translatesAutoresizingMaskIntoConstraints = false
         let general = NSTabViewItem(identifier: "general")
         general.label = "General"
-        general.view = generalStack
+        general.view = Self.pane(generalStack, pinBottom: false)
         tabs.addTabViewItem(general)
 
         let buttons = NSTabViewItem(identifier: "buttons")
@@ -74,24 +74,38 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         tabs.addTabViewItem(buttons)
         buttonsPane.onStatus = { [weak self] msg in self?.statusLabel.stringValue = msg }
 
-        let header = NSStackView(views: [deviceLabel, batteryLabel])
-        header.orientation = .vertical
-        header.alignment = .leading
-        header.spacing = 2
+        // 全程 Auto Layout：NSTabView 用 frame 幫分頁排版，內容一旦帶固定約束就會打架、溢出邊界
+        let root = NSView()
+        for v in [deviceLabel, batteryLabel, tabs, statusLabel] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            root.addSubview(v)
+        }
+        statusLabel.lineBreakMode = .byTruncatingTail
+        NSLayoutConstraint.activate([
+            deviceLabel.topAnchor.constraint(equalTo: root.topAnchor, constant: 14),
+            deviceLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
+            deviceLabel.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -18),
 
-        let root = NSStackView(views: [header, tabs, statusLabel])
-        root.orientation = .vertical
-        root.alignment = .leading
-        root.spacing = 8
-        root.edgeInsets = NSEdgeInsets(top: 14, left: 18, bottom: 10, right: 18)
-        tabs.widthAnchor.constraint(equalToConstant: 460).isActive = true
-        tabs.heightAnchor.constraint(equalToConstant: 330).isActive = true
+            batteryLabel.topAnchor.constraint(equalTo: deviceLabel.bottomAnchor, constant: 2),
+            batteryLabel.leadingAnchor.constraint(equalTo: deviceLabel.leadingAnchor),
+            batteryLabel.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -18),
 
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 430),
-                          styleMask: [.titled, .closable, .miniaturizable],
+            tabs.topAnchor.constraint(equalTo: batteryLabel.bottomAnchor, constant: 10),
+            tabs.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
+            tabs.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
+
+            statusLabel.topAnchor.constraint(equalTo: tabs.bottomAnchor, constant: 8),
+            statusLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
+            statusLabel.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
+            statusLabel.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -12),
+        ])
+
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 460),
+                          styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
         window.title = "Nibble"
         window.contentView = root
+        window.contentMinSize = NSSize(width: 470, height: 420)
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
@@ -106,6 +120,23 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     func windowWillClose(_ notification: Notification) {
         buttonsPane.teardown()
         NSApp.terminate(nil)
+    }
+
+    /// 分頁內容統一包一層容器，四邊用約束釘住——這樣分頁縮放時內容跟著走，不會溢出
+    static func pane(_ content: NSView, pinBottom: Bool) -> NSView {
+        let container = NSView()
+        content.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(content)
+        var cs = [
+            content.topAnchor.constraint(equalTo: container.topAnchor, constant: 14),
+            content.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            content.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+        ]
+        cs.append(pinBottom
+            ? content.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12)
+            : content.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -12))
+        NSLayoutConstraint.activate(cs)
+        return container
     }
 
     private func sectionLabel(_ text: String) -> NSTextField {

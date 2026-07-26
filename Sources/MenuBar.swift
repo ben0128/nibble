@@ -27,7 +27,9 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lowBatteryNotified = false
     private var configWatch: DispatchSourceFileSystemObject?
     private var flashWork: DispatchWorkItem?
-    private var batteryTitle = "🖱…"
+    private var batteryPercent: Int?
+    private var batteryCharging = false
+    private var statusTooltip = "Nibble"
     private var permissionDenied = false
     private var dpiRoot: NSMenuItem!
     private var rateRoot: NSMenuItem!
@@ -41,7 +43,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "🖱…"
+        applyStatusAppearance()
 
         let menu = NSMenu()
         menu.delegate = self   // menuWillOpen → refresh，開選單永遠是新狀態
@@ -136,14 +138,21 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         configWatch = src
     }
 
-    /// 操作回饋：選單點完就關，訊息寫在選單裡沒人看得到 → 讓狀態列圖示短暫顯示結果
+    /// 狀態列外觀：電量畫在滑鼠圖示裡（低電量轉紅），不再是「圖示＋文字」兩段
+    private func applyStatusAppearance() {
+        guard let button = statusItem.button else { return }
+        button.title = ""
+        button.image = StatusIcon.mouse(percent: batteryPercent, charging: batteryCharging)
+        button.contentTintColor = (batteryPercent.map { $0 <= 15 } ?? false) && !batteryCharging ? .systemRed : nil
+        button.toolTip = statusTooltip
+    }
+
+    /// 操作回饋：選單點完就關，訊息寫在選單裡沒人看得到 → 狀態列短暫顯示結果再變回圖示
     private func flash(_ text: String, revertAfter: TimeInterval = 1.6) {
         flashWork?.cancel()
+        statusItem.button?.image = nil
         statusItem.button?.title = text
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.statusItem.button?.title = self.batteryTitle
-        }
+        let work = DispatchWorkItem { [weak self] in self?.applyStatusAppearance() }
         flashWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + revertAfter, execute: work)
     }
@@ -249,31 +258,35 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             setPermissionUI(denied: false)
             deviceItem.title = (try? dev.name()) ?? "Logitech #\(lastIndex)"
             if let b = try? dev.battery() {
-                let warn = b.percent <= 15 && !b.charging
-                batteryTitle = "\(warn ? "⚠️" : "🖱")\(b.percent)%"
-                if flashWork == nil || flashWork!.isCancelled { statusItem.button?.title = batteryTitle }
+                batteryPercent = b.percent
+                batteryCharging = b.charging
                 let volt = b.millivolts.map { String(format: " · %.2fV", Double($0) / 1000) } ?? ""
                 detailItem.title = "\(b.charging ? "Charging ⚡" : "Discharging")\(volt)"
+                statusTooltip = "\(deviceItem.title) · \(b.percent)%\(volt)"
+                applyStatusAppearance()
                 notifyLowBatteryIfNeeded(percent: b.percent, charging: b.charging, device: deviceItem.title)
             }
             syncChecks(dev)
         } catch let e as HIDPPError {
             if case .transport(let msg) = e, msg.contains("Input Monitoring") {
-                batteryTitle = "🖱⚠️"
-                statusItem.button?.title = batteryTitle
+                batteryPercent = nil
+                statusTooltip = "Nibble — Input Monitoring permission required"
+                applyStatusAppearance()
                 deviceItem.title = "Nibble can't read your mouse"
                 detailItem.title = "Grant Input Monitoring, then Refresh"
                 setPermissionUI(denied: true)
             } else {
-                batteryTitle = "🖱💤"
-                statusItem.button?.title = batteryTitle
+                batteryPercent = nil
+                statusTooltip = "Nibble — mouse offline or asleep"
+                applyStatusAppearance()
                 deviceItem.title = "Mouse offline or asleep"
                 detailItem.title = "Move the mouse, then Refresh"
                 setPermissionUI(denied: false)
             }
         } catch {
-            batteryTitle = "🖱💤"
-            statusItem.button?.title = batteryTitle
+            batteryPercent = nil
+            statusTooltip = "Nibble — \(error)"
+            applyStatusAppearance()
             deviceItem.title = "Mouse offline or asleep"
             detailItem.title = "\(error)"
         }

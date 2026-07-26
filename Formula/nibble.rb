@@ -1,12 +1,13 @@
 class Nibble < Formula
   desc "Lightweight, zero-dependency Logitech mouse control for macOS"
   homepage "https://github.com/ben0128/nibble"
-  url "https://github.com/ben0128/nibble/archive/refs/tags/v1.0.0.tar.gz"
+  url "https://github.com/ben0128/nibble/archive/refs/tags/v1.1.0.tar.gz"
+  sha256 "ea91911cf0863213ea8bcb1571ab1e2d01cb7b040bc85158296ce5793fd4e45a"
   license "MIT"
   head "https://github.com/ben0128/nibble.git", branch: "main"
 
+  # builds with the Command Line Tools' swiftc — full Xcode not required
   depends_on :macos
-  depends_on xcode: :build
 
   def install
     system "make"

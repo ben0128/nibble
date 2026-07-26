@@ -20,10 +20,12 @@ make app                  # optional: Nibble.app (menu bar on double-click, enab
 ./nibble status
 ```
 
-Homebrew (from the formula in this repo):
+Or via Homebrew:
 
 ```sh
-brew install --build-from-source --formula ./Formula/nibble.rb
+brew tap ben0128/nibble
+brew trust ben0128/nibble    # Homebrew requires trusting third-party taps
+brew install nibble
 ```
 
 First run needs **Input Monitoring** permission: System Settings → Privacy & Security → Input Monitoring → enable your terminal app → re-run. Error `0xE00002E2` means this permission is missing. No restart needed after granting.

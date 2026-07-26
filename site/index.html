@@ -252,13 +252,13 @@
       <div>
         <span class="eyebrow">Logitech mouse control for macOS</span>
         <h1>Your mouse, minus the&nbsp;4&nbsp;GB.</h1>
-        <p class="sub">A nibble is half a byte. This one is a 256 KB command-line tool that controls your Logitech mouse natively on macOS — no daemon, no account, no telemetry.</p>
+        <p class="sub">A nibble is half a byte. This one is a 516 KB command-line tool that controls your Logitech mouse natively on macOS — no daemon, no account, no telemetry.</p>
         <div class="cta-row">
+          <button class="btn btn-brew" data-copy="brew tap ben0128/nibble https://github.com/ben0128/nibble && brew trust ben0128/nibble && brew install nibble" title="brew tap ben0128/nibble … && brew trust ben0128/nibble && brew install nibble" aria-label="copy the Homebrew install command"><span class="p">$</span> brew install nibble <span class="cp">⧉</span></button>
           <a class="btn btn-primary" href="https://github.com/ben0128/nibble">Get Nibble on GitHub</a>
-          <a class="btn btn-ghost" href="#install"><code>git clone && make</code></a>
         </div>
         <div class="hero-meta">
-          <span class="chip">256 KB binary</span>
+          <span class="chip">516 KB binary</span>
           <span class="chip">Zero dependencies</span>
           <span class="chip">Open source · MIT</span>
         </div>
@@ -289,7 +289,7 @@
   <section id="compare">
     <div class="wrap">
       <span class="eyebrow">The pitch, to scale</span>
-      <h2>G HUB is a 4 GB install. Nibble is 256 KB.</h2>
+      <h2>G HUB is a 4 GB install. Nibble is 516 KB.</h2>
       <div class="bars">
         <div class="bar-row">
           <span class="bar-name">G HUB</span>
@@ -301,10 +301,10 @@
         </div>
         <div class="bar-row">
           <span class="bar-name">Nibble</span>
-          <div class="bar-track"><div class="bar nib"></div><span class="after-label">256 KB</span></div>
+          <div class="bar-track"><div class="bar nib"></div><span class="after-label">516 KB</span></div>
         </div>
       </div>
-      <p class="bars-note">Drawn to scale, 256 KB would be 0.06 px wide — we rounded up so you can see it.</p>
+      <p class="bars-note">Drawn to scale, 516 KB would be 0.12 px wide — we rounded up so you can see it.</p>
     </div>
   </section>
 
@@ -315,12 +315,12 @@
       <h2>Small, native, and honest.</h2>
       <div class="grid">
         <div class="card">
-          <h3>256 KB. Zero dependencies.</h3>
+          <h3>516 KB. Zero dependencies.</h3>
           <p>One static binary built with make. No runtime, no installer, no framework — nothing to keep updated.</p>
         </div>
         <div class="card">
           <h3>Nothing lives in the background.</h3>
-          <p>No daemon, no telemetry, no account. Nibble runs, applies, exits. The opt-in menu bar is the only resident mode.</p>
+          <p>No daemon, no telemetry, no account. Nibble runs, applies, exits. The opt-in menu bar is the only resident mode — it also hosts button remapping.</p>
         </div>
         <div class="card">
           <h3>Speaks HID++ 4.2, natively.</h3>
@@ -354,6 +354,7 @@
             <tbody>
               <tr><td>nibble status</td><td>Overview: link, battery, DPI, report rate, feature flags</td></tr>
               <tr><td>nibble battery</td><td>One line, script-friendly: 50% 3.85V charging</td></tr>
+              <tr><td>nibble doctor</td><td>Diagnose permissions, device, config, engine — each failure prints its fix</td></tr>
               <tr><td>nibble dump</td><td>Enumerate all HID++ features (diagnostic)</td></tr>
               <tr><td>nibble dpi [50-25600]</td><td>Get / set DPI, verified by read-back</td></tr>
               <tr><td>nibble rate [125|250|500|1000]</td><td>Get / set report rate in Hz</td></tr>
@@ -364,13 +365,17 @@
               <tr><td>nibble config init|show</td><td>Create from current state / print ~/.config/nibble.json</td></tr>
               <tr><td>nibble apply</td><td>Apply the config file (runtime writes)</td></tr>
               <tr><td>nibble replay install|uninstall</td><td>Auto-apply at login via a one-shot launchd agent</td></tr>
-              <tr><td>nibble menubar</td><td>Interactive menu bar: battery + DPI/rate/RGB (~15 MB, opt-in)</td></tr>
-              <tr><td>nibble ui</td><td>Native settings window; quits when closed (zero resident)</td></tr>
+              <tr><td>nibble buttons</td><td>Enumerate programmable buttons (0x1b04 MX-series / 0x8110 G-series)</td></tr>
+              <tr><td>nibble spy [seconds]</td><td>Live button-event monitor, G-series diagnostic</td></tr>
+              <tr><td>nibble remap</td><td>Interactive remap: press a button → assign keystroke / system action / disable</td></tr>
+              <tr><td>nibble menubar</td><td>Interactive menu bar: battery + DPI/rate/RGB; hosts the remap engine (~15 MB, opt-in)</td></tr>
+              <tr><td>Nibble.app</td><td>Menu bar launched from Finder (make app) — adds low-battery notifications</td></tr>
+              <tr><td>nibble ui</td><td>Native settings window (General + Buttons tabs); quits when closed</td></tr>
             </tbody>
           </table>
         </div>
         <div class="tbl-foot">
-          <span>Debug</span>: <b>NIBBLE_DEBUG=1</b> · <span>Exit codes</span>: <b>0</b> ok · <b>1</b> <span>no awake device / not applied</span> · <b>2</b> <span>transport error</span> · <b>64</b> <span>usage</span>
+          <span>Debug</span>: <b>NIBBLE_DEBUG=1</b> · <span>Exit codes</span>: <b>0</b> ok · <b>1</b> <span>no awake device / not applied</span> · <b>2</b> <span>transport error</span> · <b>64</b> <span>usage</span> · <b>--json</b> <span>on every read command</span>
         </div>
       </div>
     </div>
@@ -386,11 +391,19 @@
         <div class="panel">
           <h3>Install</h3>
           <p class="hint">macOS with the Swift toolchain (xcode-select --install). Logitech mouse on a USB receiver — Lightspeed / Unifying; Bluetooth-direct not yet. Tested on G502 LIGHTSPEED.</p>
-          <pre class="code" id="installCode"><button class="copy" id="copyBtn">copy</button><span class="n">git clone</span> https://github.com/ben0128/nibble <span class="s">&amp;&amp;</span> <span class="n">cd</span> nibble
+          <pre class="code"><button class="copy" data-copy="brew tap ben0128/nibble https://github.com/ben0128/nibble
+brew trust ben0128/nibble
+brew install nibble">copy</button><span class="n">brew tap</span> ben0128/nibble https://github.com/ben0128/nibble
+<span class="n">brew trust</span> ben0128/nibble
+<span class="n">brew install</span> nibble</pre>
+          <p class="hint" style="margin:14px 0 8px">Or build from source (Command Line Tools are enough):</p>
+          <pre class="code"><button class="copy" data-copy="git clone https://github.com/ben0128/nibble && cd nibble
+make
+./nibble status">copy</button><span class="n">git clone</span> https://github.com/ben0128/nibble <span class="s">&amp;&amp;</span> <span class="n">cd</span> nibble
 <span class="n">make</span>
 ./nibble status</pre>
           <div class="callout">
-            <b>First run:</b> <span>grant Input Monitoring — System Settings → Privacy &amp; Security → Input Monitoring → enable your terminal, then re-run. Error</span> <code>0xE00002E2</code> <span>just means the permission is missing; no restart needed.</span>
+            <b>First run:</b> <span>grant Input Monitoring — System Settings → Privacy &amp; Security → Input Monitoring → enable your terminal, then re-run. Error</span> <code>0xE00002E2</code> <span>just means the permission is missing; no restart needed. Button remapping additionally needs Accessibility (prompted on first engine start).</span>
           </div>
         </div>
 
@@ -437,11 +450,14 @@
 </footer>
 
 <script>
-  /* ---------------- copy button ---------------- */
-  document.getElementById('copyBtn').addEventListener('click', function () {
-    navigator.clipboard.writeText('git clone https://github.com/ben0128/nibble && cd nibble\nmake\n./nibble status').then(() => {
-      this.textContent = 'copied \u2713';
-      setTimeout(() => { this.textContent = 'copy'; }, 1400);
+  /* ------- copy buttons (hero brew pill + code blocks) ------- */
+  document.querySelectorAll('[data-copy]').forEach(btn => {
+    btn.addEventListener('click', function () {
+      navigator.clipboard.writeText(this.dataset.copy).then(() => {
+        const prev = this.innerHTML;
+        this.innerHTML = 'copied \u2713';
+        setTimeout(() => { this.innerHTML = prev; }, 1400);
+      });
     });
   });
 
