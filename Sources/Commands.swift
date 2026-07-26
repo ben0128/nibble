@@ -472,3 +472,47 @@ func cmdDump() -> Int32 {
         return 2
     }
 }
+
+// MARK: - M5a：按鍵列舉（唯讀）
+
+func cmdButtons() -> Int32 {
+    withDevice { dev, _ in
+        let name = (try? dev.name()) ?? "?"
+        // 路線二：G 系（0x8110 MouseButtonSpy）——G 滑鼠沒有 0x1b04
+        if !dev.has(0x1b04), dev.has(0x8110) {
+            let n = try dev.buttonSpyCount()
+            let map = (try? dev.buttonSpyRemapping(count: n)) ?? []
+            print("\(name) · \(n) buttons（0x8110 MouseButtonSpy——G 系路徑）\n")
+            print(" btn   spy-remap")
+            print(" ----  ---------------")
+            for i in 0..<n {
+                let target = i < map.count ? Int(map[i]) : 0
+                let mapped = target == 0 ? "(default)" : (target == i + 1 ? "→ 自己（未改）" : "→ button \(target)")
+                print(String(format: " G%-3d  %@", i + 1, mapped as NSString))
+            }
+            print("\n （G 系按鍵層 = 0x8110 spy/remap；M5b divert 引擎將用 startSpy 事件流；本指令唯讀）")
+            return 0
+        }
+        // 路線一：MX 系（0x1b04 ReprogControlsV4）
+        let list = try dev.controls()
+        print("\(name) · \(list.count) controls（0x1b04 裝置自我列舉，非寫死）\n")
+        print(" cid     name              pos  divert       reprog  type")
+        print(" ------  ----------------  ---  -----------  ------  --------")
+        for c in list {
+            let name = HIDPP.cidNames[c.cid] ?? "?"
+            let divert = c.divertable ? (c.persistentlyDivertable ? "yes+persist" : "yes") : "no"
+            var type: [String] = []
+            if c.isMouseButton { type.append("mouse") }
+            if c.isFKey { type.append("fkey") }
+            if c.isHotkey { type.append("hotkey") }
+            if c.virtualControl { type.append("virtual") }
+            if c.rawXY { type.append("rawXY") }
+            print(String(format: " 0x%04X  %-16@  %3d  %-11@  %-6@  %@",
+                         Int(c.cid), name as NSString, Int(c.pos),
+                         divert as NSString, (c.reprogrammable ? "yes" : "no") as NSString,
+                         type.joined(separator: ",") as NSString))
+        }
+        print("\n （divert = 可交給軟體接管；pos = 遊戲鼠實體位置編號；M5b 引擎未上線，本指令唯讀）")
+        return 0
+    }
+}

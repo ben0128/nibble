@@ -1,7 +1,7 @@
 // main.swift — 入口與 argv 解析（零依賴，手寫解析）
 import Foundation
 
-let NIBBLE_VERSION = "0.4.0"
+let NIBBLE_VERSION = "0.5.0"
 
 let arguments = CommandLine.arguments.dropFirst()
 let command = arguments.first ?? "help"
@@ -17,6 +17,7 @@ case "rgb":      exit(cmdRGB(subArgs))
 case "mode":     exit(cmdMode(subArgs))
 case "wheel":    exit(cmdWheel(subArgs))
 case "onboard":  exit(cmdOnboard(subArgs))
+case "buttons":  exit(cmdButtons())
 case "config":   exit(cmdConfig(subArgs))
 case "apply":    exit(cmdApply())
 case "replay":   exit(cmdReplay(subArgs))
@@ -34,6 +35,7 @@ default:
       nibble battery             只印電池一行（適合腳本）
       nibble dump                HID++ feature 完整枚舉（診斷）
       nibble onboard info        板載記憶體資訊
+      nibble buttons             按鍵列舉（0x1b04，改鍵前置）
 
     設定（runtime 寫入，斷電回復；寫後回讀驗證）：
       nibble dpi [值]            讀／寫 DPI（50–25600）

@@ -34,6 +34,23 @@ public enum HIDPP {
         0x8110: "MouseButtonSpy",
     ]
 
+    /// Logitech 官方 CID（控制 ID）名稱表——只收錄有把握的；未知 CID 顯示 hex，
+    /// 靠 press-to-identify 定位（M5c）。G 系列實測到的 CID 陸續補進來。
+    public static let cidNames: [UInt16: String] = [
+        0x0050: "Left Button",
+        0x0051: "Right Button",
+        0x0052: "Middle Button",
+        0x0053: "Back Button",
+        0x0054: "Back",
+        0x0056: "Forward Button",
+        0x0057: "Forward",
+        0x005B: "Scroll Left",
+        0x005D: "Scroll Right",
+        0x00C3: "Gesture Button",
+        0x00C4: "Smart Shift",
+        0x00D7: "Smart Shift Enhanced",
+    ]
+
     /// G 系列（0x1001）回報電壓不回報 %，用 LiPo 放電曲線粗估
     public static func voltageToPercent(_ mv: Int) -> Int {
         let curve = [(4180, 100), (4050, 85), (3950, 70), (3850, 50), (3750, 30), (3650, 15), (3550, 5), (3500, 2)]
@@ -202,6 +219,54 @@ public final class HIDPPDevice {
             out.append(FeatureEntry(index: UInt8(i), id: UInt16(r[0]) << 8 | UInt16(r[1]), flags: r[2]))
         }
         return out
+    }
+
+    // MARK: 按鍵控制（0x1b04 ReprogControlsV4）—— M5a 唯讀列舉
+
+    public struct ControlInfo {
+        public let cid: UInt16     // 控制 ID（按鍵身分）
+        public let tid: UInt16     // 任務 ID（出廠預設功能）
+        public let flags: UInt8
+        public let pos: UInt8      // 遊戲滑鼠會回報實體位置編號（G1..Gn；0 = 無資料）
+        public let group: UInt8
+        public let groupMask: UInt8
+        public let additional: UInt8
+
+        public var isMouseButton: Bool { flags & 0x01 != 0 }
+        public var isFKey: Bool { flags & 0x02 != 0 }
+        public var isHotkey: Bool { flags & 0x04 != 0 }
+        public var reprogrammable: Bool { flags & 0x10 != 0 }
+        public var divertable: Bool { flags & 0x20 != 0 }
+        public var persistentlyDivertable: Bool { flags & 0x40 != 0 }
+        public var virtualControl: Bool { flags & 0x80 != 0 }
+        public var rawXY: Bool { additional & 0x01 != 0 }
+    }
+
+    /// 列舉裝置上所有可程式化控制——改鍵 UI 的資料來源，換滑鼠自動適配
+    public func controls() throws -> [ControlInfo] {
+        guard let fi = try featureIndex(of: 0x1b04) else { throw HIDPPError.featureUnsupported(0x1b04) }
+        let count = Int(try call(featureIndex: fi, function: 0)[0])
+        var out: [ControlInfo] = []
+        guard count >= 1 else { return out }
+        for i in 0..<count {
+            let r = try call(featureIndex: fi, function: 1, params: [UInt8(i)])   // getCidInfo(index)
+            out.append(ControlInfo(cid: UInt16(r[0]) << 8 | UInt16(r[1]),
+                                   tid: UInt16(r[2]) << 8 | UInt16(r[3]),
+                                   flags: r[4], pos: r[5], group: r[6], groupMask: r[7], additional: r[8]))
+        }
+        return out
+    }
+
+    // MARK: 按鍵控制路線二（0x8110 MouseButtonSpy）—— G 系滑鼠沒有 0x1b04，按鍵層走這裡
+
+    public func buttonSpyCount() throws -> Int {
+        Int(try call(feature: 0x8110, function: 0)[0])   // getNbOfButtons
+    }
+
+    /// 現行 spy 層 remap 表（每顆實體鍵一 byte，值 = 映射目標鍵號 1-based）——M5a 唯讀
+    public func buttonSpyRemapping(count: Int) throws -> [UInt8] {
+        let r = try call(feature: 0x8110, function: 3)   // getRemapping
+        return Array(r.prefix(count))
     }
 
     // MARK: 高階 API（M2 寫入組 — 全部 runtime 寫入，persist 一律 0，不碰 flash）
