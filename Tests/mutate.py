@@ -162,6 +162,8 @@ def run_one(m):
     shutil.rmtree(d, ignore_errors=True)
     shutil.copytree(os.path.join(REPO, "Sources"), os.path.join(d, "Sources"))
     shutil.copytree(os.path.join(REPO, "Tests"), os.path.join(d, "Tests"))
+    # fixtures 是測試的一部分（FixtureTests.swift 以 #filePath 定位 docs/fixtures）
+    shutil.copytree(os.path.join(REPO, "docs", "fixtures"), os.path.join(d, "docs", "fixtures"))
     target = os.path.join(d, "Sources", fname)
     src = open(target).read()
     if find not in src:
@@ -170,7 +172,8 @@ def run_one(m):
 
     srcs = [os.path.join(d, "Sources", f) for f in sorted(os.listdir(os.path.join(d, "Sources")))
             if f.endswith(".swift") and f != "main.swift"]
-    srcs += [os.path.join(d, "Tests", "main.swift")]
+    srcs += sorted(os.path.join(d, "Tests", f) for f in os.listdir(os.path.join(d, "Tests"))
+                   if f.endswith(".swift"))
     binp = os.path.join(d, "t")
     cp = subprocess.run(["swiftc", "-swift-version", "5"] + srcs + ["-o", binp],
                         capture_output=True, text=True)

@@ -1,0 +1,15 @@
+{
+  "comment": "AdjustableDPI (0x2201): getSensorDpi is fn 2 with sensor 0; the value is params[1]<<8 | params[2]. New vector (no inline Swift ancestor) added when the fixtures were introduced, so both implementations decode DPI from day one.",
+  "cases": [
+    {
+      "name": "current DPI decodes from getSensorDpi",
+      "swid": 10, "device": 1,
+      "op": { "kind": "dpi_get" },
+      "exchanges": [
+        { "request": [1, 0, 10, 34, 1], "prefer_long": false, "response": [1, 0, 10, 5, 0, 0] },
+        { "request": [1, 5, 42, 0], "prefer_long": false, "response": [1, 5, 42, 0, 6, 64] }
+      ],
+      "expect": { "dpi": 1600 }
+    }
+  ]
+}

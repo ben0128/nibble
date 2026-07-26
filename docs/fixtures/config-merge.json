@@ -1,0 +1,37 @@
+{
+  "comment": "Config-file semantics both implementations must share. These are the rules v1.7.1 was cut for: a write must never clobber unrelated keys; a file that exists but cannot be decoded is refused, byte-for-byte untouched; a missing file is created; out-of-range values clamp at the write side. 'existing' is a JSON object to pre-write; 'existing_raw' is a literal string (for undecodable inputs); no existing key = the file does not exist.",
+  "cases": [
+    {
+      "name": "a notify write keeps every unrelated key",
+      "existing": { "dpi": 1600, "reportRateHz": 1000, "activeProfile": "Gaming",
+                    "buttonProfiles": { "Gaming": { "G502": { "G8": { "type": "keys", "keys": "alt+c" } } } } },
+      "op": { "kind": "update_low_battery_notify", "enabled": true, "percent": 25 },
+      "expect": { "ok": true,
+                  "keys_preserved": ["dpi", "reportRateHz", "activeProfile", "buttonProfiles"],
+                  "values": { "lowBatteryPercent": 25, "lowBatteryNotify": true } }
+    },
+    {
+      "name": "an undecodable file is refused and left byte-for-byte intact",
+      "existing_raw": "{\"lowBatteryPercent\": 20.5, \"buttonProfiles\": {\"Gaming\": {}}}",
+      "op": { "kind": "update_low_battery_notify", "enabled": true, "percent": 30 },
+      "expect": { "error": "unreadable", "file_unchanged": true }
+    },
+    {
+      "name": "a missing file is created rather than treated as corrupt",
+      "op": { "kind": "update_low_battery_notify", "enabled": false, "percent": 20 },
+      "expect": { "ok": true, "values": { "lowBatteryNotify": false }, "threshold_resolves": null }
+    },
+    {
+      "name": "the write path clamps, not just the read path",
+      "existing": {},
+      "op": { "kind": "update_low_battery_notify", "enabled": true, "percent": 99 },
+      "expect": { "ok": true, "values": { "lowBatteryPercent": 50 } }
+    },
+    {
+      "name": "switching to a profile that does not exist fails without touching the file",
+      "existing": { "buttonProfiles": { "Default": {} }, "activeProfile": "Default" },
+      "op": { "kind": "switch_profile", "to": "Ghost" },
+      "expect": { "error": "notFound", "file_unchanged": true }
+    }
+  ]
+}

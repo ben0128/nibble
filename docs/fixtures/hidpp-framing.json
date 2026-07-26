@@ -1,0 +1,50 @@
+{
+  "comment": "HID++ 2.0 framing vectors. Both implementations (Swift Tests/, Rust windows/crates/nibble-core) replay these through a scripted transport that ALSO asserts the exact request bytes sent. swid is pinned per case because real softwareIDs are pid-derived. Request/response layout: [deviceIndex, featureIndex, fn<<4|swid, params...]; error replies: [deviceIndex, 0x8F|0xFF, origFeatureIndex, origFnSw, code].",
+  "cases": [
+    {
+      "name": "ping decodes the protocol version, request carries index/fnsw/params",
+      "swid": 10, "device": 1,
+      "op": { "kind": "ping" },
+      "exchanges": [
+        { "request": [1, 0, 26, 0, 0, 170], "prefer_long": false, "response": [1, 0, 26, 4, 2, 170] }
+      ],
+      "expect": { "ping": { "major": 4, "minor": 2 } }
+    },
+    {
+      "name": "a reply carrying another process's swid is never claimed",
+      "swid": 10, "device": 1,
+      "op": { "kind": "ping" },
+      "exchanges": [
+        { "request": [1, 0, 26, 0, 0, 170], "prefer_long": false, "response": [1, 0, 27, 4, 2, 170] }
+      ],
+      "expect": { "error": "timeout" }
+    },
+    {
+      "name": "receiver error 0x09 becomes deviceOffline (0x8F form)",
+      "swid": 10, "device": 1,
+      "op": { "kind": "ping" },
+      "exchanges": [
+        { "request": [1, 0, 26, 0, 0, 170], "prefer_long": false, "response": [1, 143, 0, 26, 9] }
+      ],
+      "expect": { "error": "deviceOffline" }
+    },
+    {
+      "name": "HID++ 2.0 error 0x02 becomes protocolError (0xFF form)",
+      "swid": 10, "device": 1,
+      "op": { "kind": "ping" },
+      "exchanges": [
+        { "request": [1, 0, 26, 0, 0, 170], "prefer_long": false, "response": [1, 255, 0, 26, 2] }
+      ],
+      "expect": { "error": "protocolError" }
+    },
+    {
+      "name": "params longer than 3 bytes force a long report",
+      "swid": 10, "device": 1,
+      "op": { "kind": "raw_call", "feature_index": 5, "function": 0, "params": [1, 2, 3, 4, 5] },
+      "exchanges": [
+        { "request": [1, 5, 10, 1, 2, 3, 4, 5], "prefer_long": true, "response": [1, 5, 10, 0, 0, 0, 0] }
+      ],
+      "expect": { "ok": true }
+    }
+  ]
+}

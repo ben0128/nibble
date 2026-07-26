@@ -176,120 +176,22 @@ expect(parseMacro("cmd+c, 29s, cmd+v") != nil, "29s of delay is accepted")
 // MARK: - HID++ 請求組裝與回應比對
 
 section("HID++ framing and response matching")
-do {
-    let tr = MockTransport()
-    let dev = HIDPPDevice(transport: tr, index: 1, swid: 0x0A)
-    tr.queued = [reply(1, 0x00, fn: 1, swid: 0x0A, [4, 2, 0xAA])]
-    do {
-        let ver = try dev.ping()
-        expectEqual(ver.major, 4, "ping decodes major version")
-        expectEqual(ver.minor, 2, "ping decodes minor version")
-        expectEqual(tr.sent.first?[0], 1, "request carries the device index")
-        expectEqual(tr.sent.first?[2], (1 << 4) | 0x0A, "request carries fn<<4 | swid")
-    } catch { expect(false, "ping round trip threw: \(error)") }
-}
-
-// 這是「跨程序串話」那個 bug 的回歸測試：別的程序用別的 swId，回應不該被我們認領
-do {
-    let tr = MockTransport()
-    let dev = HIDPPDevice(transport: tr, index: 1, swid: 0x0A)
-    tr.queued = [reply(1, 0x00, fn: 1, swid: 0x0B, [4, 2, 0xAA])]
-    var timedOut = false
-    do { _ = try dev.ping(timeout: 0.01) } catch { timedOut = true }
-    expect(timedOut, "a reply carrying another process's swid is ignored")
-}
-
-// 接收器代答的錯誤要變成可讀的錯誤，而不是被當成資料
-do {
-    let tr = MockTransport()
-    let dev = HIDPPDevice(transport: tr, index: 1, swid: 0x0A)
-    // 1.0 式錯誤回應：[裝置索引, 0x8F, 原 featureIndex, 原 fnsw, 錯誤碼]
-    tr.queued = [[1, 0x8F, 0x00, (1 << 4) | 0x0A, 0x09]]
-    var offline = false
-    do { _ = try dev.ping(timeout: 0.01) } catch HIDPPError.deviceOffline { offline = true } catch {}
-    expect(offline, "receiver error 0x09 becomes deviceOffline")
-}
-
-do {
-    let tr = MockTransport()
-    let dev = HIDPPDevice(transport: tr, index: 1, swid: 0x0A)
-    // 2.0 式錯誤回應：[裝置索引, 0xFF, 原 featureIndex, 原 fnsw, 錯誤碼]
-    tr.queued = [[1, 0xFF, 0x00, (1 << 4) | 0x0A, 0x02]]
-    var proto = false
-    do { _ = try dev.ping(timeout: 0.01) } catch HIDPPError.protocolError { proto = true } catch {}
-    expect(proto, "HID++ 2.0 error 0x02 becomes protocolError")
-}
-
-// 超過 3 bytes 的參數必須改用 long report
-do {
-    let tr = MockTransport()
-    let dev = HIDPPDevice(transport: tr, index: 1, swid: 0x0A)
-    tr.queued = [reply(1, 0x05, fn: 0, swid: 0x0A, [0, 0, 0, 0])]
-    _ = try? dev.call(featureIndex: 0x05, function: 0, params: [1, 2, 3, 4, 5])
-    expectEqual(tr.preferLongSeen.first, true, "params longer than 3 bytes force a long report")
-}
+// 向量已匯出到 docs/fixtures/hidpp-framing.json（框架組裝、swid 串話、0x8F/0xFF 錯誤、
+// long 門檻），由 FixtureTests.swift 重播——同一組 bytes 也是 Rust 實作的驗收標準。
+// 重播器比先前的 inline 版更嚴：連送出的 request bytes 都逐一比對，不只頭兩個。
+runProtocolFixtures("hidpp-framing.json")
 
 // MARK: - 電池：G 系走 0x1001，MX 系走 0x1004
 
 section("battery feature fallback")
-do {
-    let tr = MockTransport()
-    let dev = HIDPPDevice(transport: tr, index: 1, swid: 0x0A)
-    tr.queued = [
-        reply(1, 0x00, fn: 0, swid: 0x0A, [0x06, 0, 0]),          // getFeature(0x1001) → index 6
-        reply(1, 0x06, fn: 0, swid: 0x0A, [0x0E, 0xE7, 0x90]),    // 0x0EE7 = 3815 mV，flags 0x90
-    ]
-    do {
-        let b = try dev.battery()
-        expectEqual(b.source, "0x1001", "G-series battery uses the voltage feature")
-        expectEqual(b.millivolts, 3815, "voltage decodes big-endian")
-        expect(b.charging, "flags bit 7 means charging")
-        expect(b.percent > 0 && b.percent < 100, "percent comes from the curve")
-    } catch { expect(false, "0x1001 battery read threw: \(error)") }
-}
+// 三段 fallback（0x1001 → 0x1004 → 0x1000）+ feature 快取，向量在 hidpp-battery.json。
+// 曲線的一個內插點（3815 mV → 43%）也釘在向量裡——兩份實作共用同一條 LiPo 曲線。
+runProtocolFixtures("hidpp-battery.json")
 
-do {
-    let tr = MockTransport()
-    let dev = HIDPPDevice(transport: tr, index: 1, swid: 0x0A)
-    tr.queued = [
-        reply(1, 0x00, fn: 0, swid: 0x0A, [0x00, 0, 0]),          // 0x1001 不支援
-        reply(1, 0x00, fn: 0, swid: 0x0A, [0x07, 0, 0]),          // 0x1004 → index 7
-        reply(1, 0x07, fn: 1, swid: 0x0A, [55, 0, 1]),            // 55%、充電中
-    ]
-    do {
-        let b = try dev.battery()
-        expectEqual(b.source, "0x1004", "falls back to the unified battery feature")
-        expectEqual(b.percent, 55, "percent read directly")
-        expect(b.millivolts == nil, "unified battery reports no voltage")
-    } catch { expect(false, "0x1004 battery fallback threw: \(error)") }
-}
+// MARK: - DPI 解碼（fixtures 引入時新增的向量，兩邊第一天就對齊）
 
-do {
-    let tr = MockTransport()
-    let dev = HIDPPDevice(transport: tr, index: 1, swid: 0x0A)
-    tr.queued = [
-        reply(1, 0x00, fn: 0, swid: 0x0A, [0x00, 0, 0]),          // 0x1001 不支援
-        reply(1, 0x00, fn: 0, swid: 0x0A, [0x00, 0, 0]),          // 0x1004 也不支援
-        reply(1, 0x00, fn: 0, swid: 0x0A, [0x08, 0, 0]),          // 0x1000 → index 8
-        reply(1, 0x08, fn: 0, swid: 0x0A, [72, 0, 1]),            // 72%、status 非 0 = 充電
-    ]
-    do {
-        let b = try dev.battery()
-        expectEqual(b.source, "0x1000", "the oldest battery feature is the last resort")
-        expectEqual(b.percent, 72, "level byte is the percentage")
-        expect(b.charging, "a non-zero status byte means charging")
-    } catch { expect(false, "0x1000 battery fallback threw: \(error)") }
-}
-
-// feature index 查過就該快取，不要每次都重問
-do {
-    let tr = MockTransport()
-    let dev = HIDPPDevice(transport: tr, index: 1, swid: 0x0A)
-    tr.queued = [reply(1, 0x00, fn: 0, swid: 0x0A, [0x09, 0, 0])]
-    _ = try? dev.featureIndex(of: 0x8100)
-    _ = try? dev.featureIndex(of: 0x8100)
-    expectEqual(tr.sent.count, 1, "feature index is cached after the first lookup")
-}
+section("dpi decoding")
+runProtocolFixtures("hidpp-dpi.json")
 
 // MARK: - 設定檔：合併行為（曾經整份覆寫，弄丟改鍵表）
 
@@ -485,6 +387,11 @@ do {
     }
   } catch { expect(false, "config write path threw unexpectedly: \(error)") }
 }
+
+// MARK: - 設定檔語意向量（與 Rust 實作共用；規則是 v1.7.1 用資料損失換來的）
+
+section("config semantics fixtures")
+runConfigFixtures("config-merge.json")
 
 // MARK: - 選單列存活探測（跨程序判斷，靠 flock 而不是比對程序名）
 

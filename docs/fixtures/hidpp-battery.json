@@ -1,0 +1,47 @@
+{
+  "comment": "Battery feature chain: G-series 0x1001 BatteryVoltage (mV big-endian + LiPo curve; flags bit7 = charging) -> 0x1004 unified (percent direct; status 1..3 = charging) -> 0x1000 legacy (level byte; any non-zero status = charging). getFeature lookups go through IRoot (featureIndex 0, fn 0). The exact-percent expectations also pin one interpolation point of the shared voltage curve.",
+  "cases": [
+    {
+      "name": "G-series battery via 0x1001: millivolts, curve percent, charging bit",
+      "swid": 10, "device": 1,
+      "op": { "kind": "battery" },
+      "exchanges": [
+        { "request": [1, 0, 10, 16, 1], "prefer_long": false, "response": [1, 0, 10, 6, 0, 0] },
+        { "request": [1, 6, 10], "prefer_long": false, "response": [1, 6, 10, 14, 231, 144] }
+      ],
+      "expect": { "battery": { "source": "0x1001", "millivolts": 3815, "percent": 43, "charging": true } }
+    },
+    {
+      "name": "falls back to unified 0x1004 when 0x1001 is unsupported",
+      "swid": 10, "device": 1,
+      "op": { "kind": "battery" },
+      "exchanges": [
+        { "request": [1, 0, 10, 16, 1], "prefer_long": false, "response": [1, 0, 10, 0, 0, 0] },
+        { "request": [1, 0, 10, 16, 4], "prefer_long": false, "response": [1, 0, 10, 7, 0, 0] },
+        { "request": [1, 7, 26], "prefer_long": false, "response": [1, 7, 26, 55, 0, 1] }
+      ],
+      "expect": { "battery": { "source": "0x1004", "millivolts": null, "percent": 55, "charging": true } }
+    },
+    {
+      "name": "legacy 0x1000 is the last resort; any non-zero status means charging",
+      "swid": 10, "device": 1,
+      "op": { "kind": "battery" },
+      "exchanges": [
+        { "request": [1, 0, 10, 16, 1], "prefer_long": false, "response": [1, 0, 10, 0, 0, 0] },
+        { "request": [1, 0, 10, 16, 4], "prefer_long": false, "response": [1, 0, 10, 0, 0, 0] },
+        { "request": [1, 0, 10, 16, 0], "prefer_long": false, "response": [1, 0, 10, 8, 0, 0] },
+        { "request": [1, 8, 10], "prefer_long": false, "response": [1, 8, 10, 72, 0, 1] }
+      ],
+      "expect": { "battery": { "source": "0x1000", "millivolts": null, "percent": 72, "charging": true } }
+    },
+    {
+      "name": "feature index is cached after the first lookup",
+      "swid": 10, "device": 1,
+      "op": { "kind": "feature_index_twice", "feature": 33024 },
+      "exchanges": [
+        { "request": [1, 0, 10, 129, 0], "prefer_long": false, "response": [1, 0, 10, 9, 0, 0] }
+      ],
+      "expect": { "ok": true }
+    }
+  ]
+}
