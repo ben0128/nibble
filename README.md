@@ -194,6 +194,8 @@ Sources/L10n.swift            --json output + machine-readable errors
 Sources/Version.swift         one version constant, readable from the test build too
 Sources/main.swift            argv dispatch
 Tests/main.swift              the suite; Tests/mutate.py audits whether it protects anything
+docs/fixtures/                protocol + config vectors shared with the Rust implementation
+windows/                      the Windows port (Rust; in progress — see docs/superpowers/specs/)
 ```
 
 Everything above `Transport.swift` talks to the `HIDPPTransport` protocol — request/response, the connection's shape (`isDirect`, `longOnly`, `productID`), and the inbound event stream (`onReport`, `onRemoval`). Discovery goes through one free function, `openHIDPPTransports()`, provided by whichever platform file is in the build. So a port replaces one file and implements one protocol; the protocol layer, the CLI and the remap engines don't change. The test suite exercises them through a mock transport, which is how device discovery and engine selection are covered without a mouse.
