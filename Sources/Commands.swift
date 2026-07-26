@@ -187,8 +187,10 @@ func cmdDoctor() -> Int32 {
     }
 
     let cfg = loadConfig()
-    let mapCount = cfg?.buttonMaps?.values.reduce(0) { $0 + $1.count } ?? 0
-    add("config", cfg != nil, cfg == nil ? "not created" : "\(bmConfigURL.path) · \(mapCount) button mapping(s)",
+    let mapCount = activeButtonMaps(cfg).values.reduce(0, { $0 + $1.count })
+    let profiles = profileNames(cfg)
+    let profileNote = profiles.count > 1 ? " · profile \(currentProfileName(cfg)) of \(profiles.count)" : ""
+    add("config", cfg != nil, cfg == nil ? "not created" : "\(bmConfigURL.path) · \(mapCount) button mapping(s)\(profileNote)",
         fix: cfg == nil ? "nibble config init" : nil)
 
     // 改鍵引擎跑在選單列那個程序裡，狀態靠它寫的檔案回報——CLI 自己的 AX 權限不代表引擎的
@@ -641,7 +643,7 @@ func cmdButtons() -> Int32 {
     withDevice { dev, _ in
         let name = (try? dev.name()) ?? "?"
         if jsonMode {
-            let saved = loadConfig()?.buttonMaps?[name] ?? [:]
+            let saved = activeButtonMaps(loadConfig())[name] ?? [:]
             var list: [[String: Any]] = []
             if dev.has(0x8110) {
                 let n = try dev.buttonSpyCount()
@@ -820,13 +822,9 @@ func cmdRemap() -> Int32 {
         default:
             return 64
         }
-        var cfg = loadConfig() ?? BMConfig()
-        var maps = cfg.buttonMaps ?? [:]
-        var devMap = maps[devName] ?? [:]
-        if let action { devMap[bName] = action } else { devMap.removeValue(forKey: bName) }
-        maps[devName] = devMap.isEmpty ? nil : devMap
-        cfg.buttonMaps = maps
-        try saveConfig(cfg)
+        try updateActiveButtonMap(device: devName) { devMap in
+            if let action { devMap[bName] = action } else { devMap.removeValue(forKey: bName) }
+        }
         let desc = action.map {
             switch $0.type {
             case "keys": return "keys: \($0.keys ?? "")"
@@ -841,5 +839,68 @@ func cmdRemap() -> Int32 {
             print("  ⚠️ Accessibility not granted yet — the menu bar app will prompt when the engine starts")
         }
         return 0
+    }
+}
+
+// MARK: - 改鍵組合（profile）
+
+func cmdProfile(_ args: [String]) -> Int32 {
+    let cfg = loadConfig()
+    let names = profileNames(cfg)
+    let current = currentProfileName(cfg)
+
+    func counts(_ name: String) -> Int {
+        (cfg?.buttonProfiles?[name] ?? (name == defaultProfileName ? cfg?.buttonMaps : nil) ?? [:])
+            .values.reduce(0, { $0 + $1.count })
+    }
+
+    switch args.first ?? "list" {
+    case "list":
+        if jsonMode {
+            emitJSON(["active": current,
+                      "profiles": names.map { ["name": $0, "mappings": counts($0)] }])
+        } else {
+            for n in names {
+                print("\(n == current ? " * " : "   ")\(n)  ·  \(counts(n)) mapping(s)")
+            }
+        }
+        return 0
+
+    case "use":
+        guard let name = args.dropFirst().first else { print("usage: nibble profile use <name>"); return 64 }
+        do {
+            try switchProfile(to: name)
+            print("switched to \(name) · \(counts(name)) mapping(s)")
+            print("  the menu bar app reloads the engine automatically")
+            return 0
+        } catch { emitError("\(error)", code: "profile"); return 1 }
+
+    case "new", "copy":
+        guard let name = args.dropFirst().first else {
+            print("usage: nibble profile \(args[0]) <name>"); return 64
+        }
+        do {
+            try createProfile(name, copyFrom: args[0] == "copy" ? current : nil)
+            print("created \(name)\(args[0] == "copy" ? " as a copy of \(current)" : "") and switched to it")
+            return 0
+        } catch { emitError("\(error)", code: "profile"); return 1 }
+
+    case "rename":
+        let rest = Array(args.dropFirst())
+        guard rest.count == 2 else { print("usage: nibble profile rename <old> <new>"); return 64 }
+        do { try renameProfile(rest[0], to: rest[1]); print("renamed \(rest[0]) → \(rest[1])"); return 0 }
+        catch { emitError("\(error)", code: "profile"); return 1 }
+
+    case "delete":
+        guard let name = args.dropFirst().first else { print("usage: nibble profile delete <name>"); return 64 }
+        do {
+            try deleteProfile(name)
+            print("deleted \(name)\(name == current ? " · switched to \(defaultProfileName)" : "")")
+            return 0
+        } catch { emitError("\(error)", code: "profile"); return 1 }
+
+    default:
+        print("usage: nibble profile [list|use <name>|new <name>|copy <name>|rename <old> <new>|delete <name>]")
+        return 64
     }
 }

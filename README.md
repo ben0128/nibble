@@ -56,6 +56,7 @@ If remaps do nothing, run `nibble doctor` — it reports whether the engine is r
 | `nibble buttons` | Enumerate programmable buttons (0x1b04 MX-series / 0x8110 G-series) |
 | `nibble spy [seconds]` | Live button-event monitor, G-series diagnostic; auto-stops after N seconds |
 | `nibble remap` | Interactive remap: press a physical button → assign keystroke / system action / disable |
+| `nibble profile [list\|use\|new\|copy\|rename\|delete]` | Switch between sets of button mappings |
 | `nibble menubar` | Interactive menu bar: battery + DPI/rate/RGB controls; hosts the remap engine (~15 MB, opt-in) |
 | `Nibble.app` | Same as `nibble menubar` but launched from Finder; the bundle also enables low-battery notifications |
 | `nibble ui` | Native settings window (General + Buttons tabs); quits when closed |
@@ -92,7 +93,19 @@ Two equivalent paths — CLI `nibble remap`, or the **Buttons** tab in `nibble u
 
 The button list is enumerated from the device itself, so any Logitech mouse populates it without per-model artwork. Click **Press to identify** and press a physical button — its row highlights. Then edit the row: record a keystroke by actually pressing it, pick a system action, or disable the button. Right-click a row to clear its mapping.
 
-Mappings are stored per device name under `buttonMaps` and executed by the menu bar app, which watches the config file and reloads automatically when you save.
+Mappings are stored per device name and executed by the menu bar app, which watches the config file and reloads automatically when you save.
+
+### Profiles
+
+A profile is a complete set of button mappings — switch one and every device changes together. The menu bar carries the list under **Remapping → Profile** so you can change sets without opening a window; the Buttons tab has the same picker plus new / duplicate / rename / delete.
+
+```sh
+nibble profile              # list, with the active one marked
+nibble profile copy Gaming  # branch off the current set
+nibble profile use Default
+```
+
+Config keeps them under `buttonProfiles` with `activeProfile` naming the live one. A config written by an older version — mappings directly under `buttonMaps` — is read as the `Default` profile and migrated on the first write, with the previous file kept as `nibble.json.bak`. `Default` can't be deleted, deleting the active profile falls back to it, and an `activeProfile` naming something that no longer exists resolves to `Default` rather than silently losing every mapping.
 
 ## Behavior model
 

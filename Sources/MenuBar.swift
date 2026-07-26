@@ -70,6 +70,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var openSettingsItem: NSMenuItem!
     private var remapRoot: NSMenuItem!
     private var pauseItem: NSMenuItem!
+    private var profileRoot: NSMenuItem!
     private var remapPaused = false
     private let engineItem = NSMenuItem(title: "Remapping: off", action: nil, keyEquivalent: "")
 
@@ -137,6 +138,10 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         remapRoot = NSMenuItem(title: "Remapping", action: nil, keyEquivalent: "")
         let remapMenu = NSMenu()
         pauseItem = makeItem("Pause remapping", #selector(togglePause))
+        profileRoot = NSMenuItem(title: "Profile", action: nil, keyEquivalent: "")
+        profileRoot.submenu = NSMenu()
+        remapMenu.addItem(profileRoot)
+        remapMenu.addItem(.separator())
         remapMenu.addItem(pauseItem)
         remapMenu.addItem(engineItem)          // 狀態／失敗原因，必要時可點去開權限設定
         remapMenu.addItem(.separator())
@@ -153,6 +158,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
 
         refresh()
+        rebuildProfileMenu()
         startEngine()
         watchConfig()
         timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
@@ -209,7 +215,8 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         engineNeedsAX = false
         engineItem.action = nil
         engineItem.target = nil
-        guard let maps = loadConfig()?.buttonMaps, !maps.isEmpty else {
+        let maps = activeButtonMaps(loadConfig())
+        guard !maps.isEmpty else {
             engineItem.title = "Remapping: none configured"
             EngineState.writeStatus(["active": false, "reason": "no mappings configured", "mappings": 0, "axTrusted": axTrusted()])
             return
@@ -266,7 +273,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } catch {
             engineItem.title = "Remapping: ❌ \(error)"
             EngineState.writeStatus(["active": false, "reason": "\(error)", "axTrusted": axTrusted(),
-                               "mappings": maps.values.reduce(0) { $0 + $1.count }])
+                               "mappings": maps.values.reduce(0, { $0 + $1.count })])
             scheduleEngineRetry()
         }
     }
@@ -300,11 +307,45 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openButtonsAction() { openPanel(tab: "buttons") }
 
+    private func rebuildProfileMenu() {
+        let cfg = loadConfig()
+        let names = profileNames(cfg)
+        let current = currentProfileName(cfg)
+        let menu = NSMenu()
+        for name in names {
+            let item = NSMenuItem(title: name, action: #selector(switchProfileAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = name
+            item.state = name == current ? .on : .off
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let edit = NSMenuItem(title: "Edit profiles…", action: #selector(openButtonsAction), keyEquivalent: "")
+        edit.target = self
+        menu.addItem(edit)
+        profileRoot.submenu = menu
+        profileRoot.title = names.count > 1 ? "Profile\t\(current)" : "Profile"
+    }
+
+    @objc private func switchProfileAction(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        do {
+            try switchProfile(to: name)
+            startEngine()          // 立即生效，不等檔案監看那 0.3 秒
+            rebuildProfileMenu()
+            flash("✓\(name.prefix(6))")
+        } catch {
+            detailItem.title = "❌ \(error)"
+        }
+    }
+
     /// 父列直接說明狀態，不必展開子選單
     private func updateRemapSummary() {
+        let cfg = loadConfig()
+        let profileTag = profileNames(cfg).count > 1 ? "\(currentProfileName(cfg)) · " : ""
         if remapPaused { remapRoot.title = "Remapping\tpaused"; return }
-        if let e = engine, e.active { remapRoot.title = "Remapping\t\(e.mappingCount) active" }
-        else if (loadConfig()?.buttonMaps?.values.reduce(0) { $0 + $1.count } ?? 0) == 0 {
+        if let e = engine, e.active { remapRoot.title = "Remapping\t\(profileTag)\(e.mappingCount) active" }
+        else if activeButtonMaps(cfg).values.reduce(0, { $0 + $1.count }) == 0 {
             remapRoot.title = "Remapping\tnone"
         } else {
             remapRoot.title = "Remapping\t⚠️ not running"
@@ -348,6 +389,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshing = true
         DispatchQueue.main.async { [weak self] in
             self?.refresh()
+            self?.rebuildProfileMenu()
             self?.refreshing = false
         }
     }
@@ -408,7 +450,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             syncChecks(dev)
             setControlsLive(true)
-            if engine == nil, !remapPaused, let maps = loadConfig()?.buttonMaps, !maps.isEmpty { startEngine() }
+            if engine == nil, !remapPaused, !activeButtonMaps(loadConfig()).isEmpty { startEngine() }
         } catch let e as HIDPPError {
             if case .transport(let msg) = e, msg.contains("Input Monitoring") {
                 batteryPercent = nil

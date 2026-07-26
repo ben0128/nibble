@@ -28,6 +28,7 @@ case "onboard":  exit(cmdOnboard(subArgs))
 case "buttons":  exit(cmdButtons())
 case "spy":      exit(cmdSpy(subArgs))
 case "remap":    exit(cmdRemap())
+case "profile":  exit(cmdProfile(subArgs))
 case "config":   exit(cmdConfig(subArgs))
 case "apply":    exit(cmdApply())
 case "replay":   exit(cmdReplay(subArgs))
@@ -57,6 +58,7 @@ default:
 
     REMAP BUTTONS (engine runs inside the menu bar app)
       nibble remap                  press a button, assign an action
+      nibble profile [use <name>]   switch between sets of button mappings
       nibble spy [seconds]          live button-event monitor (diagnostic)
 
     CONFIG & REPLAY

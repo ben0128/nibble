@@ -224,6 +224,58 @@ do {
     expectEqual(parsed.count, 2, "only remappable entries survive")
 }
 
+// MARK: - 改鍵組合（profile）解析與邊界
+
+section("button profiles")
+do {
+    func decode(_ json: String) -> BMConfig {
+        try! JSONDecoder().decode(BMConfig.self, from: Data(json.utf8))
+    }
+    let act = #"{"type":"keys","keys":"d"}"#
+
+    // 舊設定檔（只有 buttonMaps）必須照常運作，不能因為導入 profile 就變空
+    let legacy = decode(#"{"buttonMaps":{"G502":{"G7":\#(act)}}}"#)
+    expectEqual(activeButtonMaps(legacy)["G502"]?.count, 1, "legacy buttonMaps still resolve")
+    expectEqual(currentProfileName(legacy), "Default", "legacy config reports the Default profile")
+    expectEqual(profileNames(legacy), ["Default"], "legacy config lists one profile")
+
+    let two = decode("""
+    {"buttonProfiles":{"Default":{"G502":{"G7":\(act)}},
+                       "Gaming":{"G502":{"G7":\(act),"G8":\(act)}}},
+     "activeProfile":"Gaming"}
+    """)
+    expectEqual(activeButtonMaps(two)["G502"]?.count, 2, "the active profile's map is the one used")
+    expectEqual(currentProfileName(two), "Gaming", "active profile is reported")
+    expectEqual(profileNames(two).first, "Default", "Default always sorts first")
+    expectEqual(profileNames(two).count, 2, "both profiles are listed")
+
+    // 懸空的 activeProfile 不該讓所有映射消失
+    let dangling = decode("""
+    {"buttonProfiles":{"Default":{"G502":{"G7":\(act)}}},"activeProfile":"Deleted"}
+    """)
+    expectEqual(activeButtonMaps(dangling)["G502"]?.count, 1, "an unknown active profile falls back to Default")
+    expectEqual(currentProfileName(dangling), "Default", "and reports Default, not the missing name")
+
+    // profiles 存在但活躍的那個是空的 → 空表，不要回退到別的 profile
+    let emptyActive = decode("""
+    {"buttonProfiles":{"Default":{"G502":{"G7":\(act)}},"Empty":{}},"activeProfile":"Empty"}
+    """)
+    expect(activeButtonMaps(emptyActive).isEmpty, "an empty active profile resolves to no mappings")
+
+    // 遷移：舊格式進來，出去要變成 Default profile 且保留內容
+    var migrating = legacy
+    migrateToProfiles(&migrating)
+    expectEqual(migrating.buttonProfiles?["Default"]?["G502"]?.count, 1, "migration moves buttonMaps into Default")
+    expect(migrating.buttonMaps == nil, "migration clears the legacy field")
+    expectEqual(migrating.activeProfile, "Default", "migration sets the active profile")
+
+    // 已經是新格式就不要再動它
+    var already = two
+    migrateToProfiles(&already)
+    expectEqual(already.activeProfile, "Gaming", "migration leaves an already-migrated config alone")
+    expectEqual(already.buttonProfiles?.count, 2, "and keeps every profile")
+}
+
 // MARK: - 收尾
 
 print("")

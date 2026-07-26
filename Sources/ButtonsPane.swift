@@ -18,6 +18,8 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     private let table = NSTableView()
     private let hintLabel = NSTextField(labelWithString: "")
     private let learnButton = NSButton(title: "Press to identify", target: nil, action: nil)
+    private let profilePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let profileMenuButton = NSPopUpButton(frame: .zero, pullsDown: true)
 
     // 右側編輯面板
     private let editorTitle = NSTextField(labelWithString: "No button selected")
@@ -74,6 +76,29 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         ctx.addItem(clearItem)
         table.menu = ctx
 
+        profilePopup.target = self
+        profilePopup.action = #selector(profileChanged)
+        profilePopup.toolTip = "Each profile is its own set of button mappings. Switching one takes effect immediately — the menu bar has the same list."
+        profilePopup.translatesAutoresizingMaskIntoConstraints = false
+        profilePopup.widthAnchor.constraint(equalToConstant: 150).isActive = true
+
+        // pull-down 的第一項是標題，不會被選中
+        profileMenuButton.addItem(withTitle: "⋯")
+        for (title, sel) in [("New profile…", #selector(newProfile)),
+                             ("Duplicate this profile…", #selector(duplicateProfile)),
+                             ("Rename…", #selector(renameCurrentProfile)),
+                             ("Delete", #selector(deleteCurrentProfile))] {
+            let item = NSMenuItem(title: title, action: sel, keyEquivalent: "")
+            item.target = self
+            profileMenuButton.menu?.addItem(item)
+        }
+        profileMenuButton.translatesAutoresizingMaskIntoConstraints = false
+        profileMenuButton.widthAnchor.constraint(equalToConstant: 46).isActive = true
+
+        let profileRow = NSStackView(views: [NSTextField(labelWithString: "Profile"), profilePopup, profileMenuButton])
+        profileRow.spacing = 8
+        profileRow.translatesAutoresizingMaskIntoConstraints = false
+
         let scroll = NSScrollView()
         scroll.documentView = table
         scroll.hasVerticalScroller = true
@@ -101,9 +126,12 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         editor.translatesAutoresizingMaskIntoConstraints = false
 
         let container = NSView()
-        for v in [scroll, learnButton, hintLabel, editor] { container.addSubview(v) }
+        for v in [profileRow, scroll, learnButton, hintLabel, editor] { container.addSubview(v) }
         NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
+            profileRow.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
+            profileRow.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
+
+            scroll.topAnchor.constraint(equalTo: profileRow.bottomAnchor, constant: 10),
             scroll.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
             scroll.widthAnchor.constraint(equalToConstant: 236),
 
@@ -115,11 +143,12 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             hintLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
             hintLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
 
-            editor.topAnchor.constraint(equalTo: scroll.topAnchor),
+            editor.topAnchor.constraint(equalTo: profileRow.topAnchor),
             editor.leadingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: 16),
             editor.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
             editor.bottomAnchor.constraint(lessThanOrEqualTo: learnButton.bottomAnchor),
         ])
+        rebuildProfilePopup()
         updateEditor()
         return container
     }
@@ -179,13 +208,81 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         return c
     }
 
+    // MARK: Profile
+
+    private func rebuildProfilePopup() {
+        let cfg = loadConfig()
+        profilePopup.removeAllItems()
+        profilePopup.addItems(withTitles: profileNames(cfg))
+        profilePopup.selectItem(withTitle: currentProfileName(cfg))
+    }
+
+    @objc private func profileChanged() {
+        guard let name = profilePopup.titleOfSelectedItem else { return }
+        do { try switchProfile(to: name); reload(); onStatus?("Profile: \(name)") }
+        catch { onStatus?("❌ \(error)") }
+    }
+
+    /// 小輸入框對話框——名稱這種一行輸入不值得開一個視窗
+    private func askName(_ title: String, _ initial: String = "") -> String? {
+        let alert = NSAlert()
+        alert.messageText = title
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        field.stringValue = initial
+        alert.accessoryView = field
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        let name = field.stringValue.trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? nil : name
+    }
+
+    private func afterProfileChange(_ note: String) {
+        rebuildProfilePopup()
+        reload()
+        onStatus?(note)
+    }
+
+    @objc private func newProfile() {
+        guard let name = askName("Name for the new profile") else { return }
+        do { try createProfile(name); afterProfileChange("Created \(name) — it starts empty") }
+        catch { onStatus?("❌ \(error)") }
+    }
+
+    @objc private func duplicateProfile() {
+        let from = currentProfileName(loadConfig())
+        guard let name = askName("Name for the copy of \(from)", "\(from) copy") else { return }
+        do { try createProfile(name, copyFrom: from); afterProfileChange("Created \(name) from \(from)") }
+        catch { onStatus?("❌ \(error)") }
+    }
+
+    @objc private func renameCurrentProfile() {
+        let old = currentProfileName(loadConfig())
+        guard let name = askName("Rename \(old) to", old), name != old else { return }
+        do { try renameProfile(old, to: name); afterProfileChange("Renamed to \(name)") }
+        catch { onStatus?("❌ \(error)") }
+    }
+
+    @objc private func deleteCurrentProfile() {
+        let name = currentProfileName(loadConfig())
+        let alert = NSAlert()
+        alert.messageText = "Delete the \(name) profile?"
+        alert.informativeText = "Its button mappings go with it. Other profiles are untouched."
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do { try deleteProfile(name); afterProfileChange("Deleted \(name)") }
+        catch { onStatus?("❌ \(error)") }
+    }
+
     // MARK: 資料
 
     func reload() {
         do {
             let (dev, _) = try uiOpenDevice(preferred: 1)
             deviceName = (try? dev.name()) ?? "unknown"
-            let saved = loadConfig()?.buttonMaps?[deviceName] ?? [:]
+            let saved = activeButtonMaps(loadConfig())[deviceName] ?? [:]
             var out: [ButtonRow] = []
             if dev.has(0x8110) {
                 let n = try dev.buttonSpyCount()
@@ -357,15 +454,11 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     }
 
     private func save(_ action: ButtonAction?, for rowIndex: Int) {
-        var cfg = loadConfig() ?? BMConfig()
-        var maps = cfg.buttonMaps ?? [:]
-        var devMap = maps[deviceName] ?? [:]
         let key = rows[rowIndex].name.components(separatedBy: " ").first ?? rows[rowIndex].name
-        if let action { devMap[key] = action } else { devMap.removeValue(forKey: key) }
-        maps[deviceName] = devMap.isEmpty ? nil : devMap
-        cfg.buttonMaps = maps
         do {
-            try saveConfig(cfg)
+            try updateActiveButtonMap(device: deviceName) { devMap in
+                if let action { devMap[key] = action } else { devMap.removeValue(forKey: key) }
+            }
             rows[rowIndex].action = action
             table.reloadData()
             table.selectRowIndexes(IndexSet(integer: rowIndex), byExtendingSelection: false)
