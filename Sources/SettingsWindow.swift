@@ -2,6 +2,15 @@
 // 設定器哲學：開 → 調 → 關窗即退出程序，零常駐。純 AppKit 手寫佈局，無 SwiftUI runtime。
 import AppKit
 
+/// 說明全靠 hover 才看得到，那 hover 就不該等——AppKit 預設要 1.5 秒以上，
+/// 對「移過去看一眼」的用法太久。註冊在 registration domain：只影響這個程序，
+/// 不會像 `defaults write -g` 那樣改掉使用者整台機器的行為，也不寫進偏好檔。
+/// 單位是毫秒。200 而不是 0：夠快到感覺是「馬上」，又留一點餘裕讓游標
+/// 掠過一排控制項時不會沿途閃出一串提示。
+func nibbleFastTooltips() {
+    UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 200])
+}
+
 /// 說明性文字改成 hover 才顯示的「?」——常駐灰字會把視窗塞滿但多數時候沒人在讀
 func nibbleHelpBadge(_ text: String) -> NSImageView {
     let view = NSImageView()
@@ -22,6 +31,7 @@ func nibbleSectionRow(_ label: NSView, help: String) -> NSStackView {
 }
 
 func runSettingsUI(initialTab: String? = nil) -> Int32 {
+    nibbleFastTooltips()
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
     let delegate = SettingsDelegate()

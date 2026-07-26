@@ -44,6 +44,7 @@ func runMenuBar() -> Int32 {
         }
         return 0
     }
+    nibbleFastTooltips()
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)   // 無 Dock 圖示
     let delegate = MenuBarDelegate()
