@@ -2,6 +2,25 @@
 // 設定器哲學：開 → 調 → 關窗即退出程序，零常駐。純 AppKit 手寫佈局，無 SwiftUI runtime。
 import AppKit
 
+/// 說明性文字改成 hover 才顯示的「?」——常駐灰字會把視窗塞滿但多數時候沒人在讀
+func nibbleHelpBadge(_ text: String) -> NSImageView {
+    let view = NSImageView()
+    view.image = NSImage(systemSymbolName: "questionmark.circle", accessibilityDescription: text)
+    view.contentTintColor = .tertiaryLabelColor
+    view.toolTip = text
+    view.setContentHuggingPriority(.required, for: .horizontal)
+    view.setContentCompressionResistancePriority(.required, for: .horizontal)
+    return view
+}
+
+/// 區段標題後面掛一個說明圖示
+func nibbleSectionRow(_ label: NSView, help: String) -> NSStackView {
+    let row = NSStackView(views: [label, nibbleHelpBadge(help)])
+    row.spacing = 5
+    row.alignment = .centerY
+    return row
+}
+
 func runSettingsUI(initialTab: String? = nil) -> Int32 {
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
@@ -22,7 +41,6 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     private let dpiCustom = NSTextField(string: "")
     private let rateControl = NSSegmentedControl(labels: ["125", "250", "500", "1000"], trackingMode: .selectOne, target: nil, action: nil)
     private let rgbControl = NSSegmentedControl(labels: ["Off", "Cycle", "Breathing"], trackingMode: .selectOne, target: nil, action: nil)
-    private let rgbNote = NSTextField(labelWithString: "Lighting can't be read back from the mouse")
     private let replayCheck = NSButton(checkboxWithTitle: "Re-apply my settings at login", target: nil, action: nil)
     private let statusLabel = NSTextField(labelWithString: " ")
     private let aboutButton = NSButton(title: "GitHub", target: nil, action: nil)
@@ -45,10 +63,6 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         rgbControl.toolTip = "Written to the device immediately. The mouse has no way to report its current effect back, so Nibble shows the last one it applied."
         rateControl.toolTip = "Higher rates poll more often — smoother tracking, slightly more battery. Writing this requires host mode; Nibble switches automatically."
         replayCheck.toolTip = "Installs a one-shot launchd agent that runs `nibble apply` at login. It exits immediately after — nothing stays resident."
-        for note in [rgbNote] {
-            note.font = .systemFont(ofSize: 11)
-            note.textColor = .tertiaryLabelColor
-        }
 
         dpiControl.target = self
         dpiControl.action = #selector(dpiPresetChanged)
@@ -88,7 +102,10 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         let generalStack = NSStackView(views: [
             sectionLabel("DPI"), dpiControl, dpiCustomRow,
             sectionLabel("Report rate (Hz)"), rateControl,
-            sectionLabel("Lighting"), rgbControl, rgbNote,
+            nibbleSectionRow(sectionLabel("Lighting"),
+                             help: "Lighting can't be read back from the mouse — Nibble shows the last effect it applied. "
+                                 + "A power cycle returns the mouse to its onboard profile."),
+            rgbControl,
             NSBox(), lifecycle, startupRow,
         ])
         generalStack.orientation = .vertical
@@ -345,10 +362,8 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     private func showLighting() {
         if let kind = lastRGB, let i = Self.rgbKinds.firstIndex(of: kind) {
             rgbControl.selectedSegment = i
-            rgbNote.stringValue = ""   // 知道值就不必每次都提醒但書，tooltip 裡有
         } else {
             rgbControl.selectedSegment = -1
-            rgbNote.stringValue = "Current effect is unknown — the mouse can't report it back"
         }
     }
 

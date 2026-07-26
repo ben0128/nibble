@@ -18,7 +18,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     var onPendingChange: ((Int) -> Void)?
 
     private let table = NSTableView()
-    private let hintLabel = NSTextField(labelWithString: "")
+    private var helpBadge: NSImageView!
     private let learnButton = NSButton(title: "Press to identify", target: nil, action: nil)
     private let profilePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let profileMenuButton = NSPopUpButton(frame: .zero, pullsDown: true)
@@ -119,22 +119,19 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         learnButton.action = #selector(toggleLearn)
         learnButton.translatesAutoresizingMaskIntoConstraints = false
 
-        hintLabel.font = .systemFont(ofSize: 11)
-        hintLabel.textColor = .secondaryLabelColor
-        hintLabel.lineBreakMode = .byTruncatingTail
-        hintLabel.usesSingleLineMode = true
-        hintLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        hintLabel.stringValue = "Changes apply instantly"
-        hintLabel.toolTip = "Saved to ~/.config/nibble.json. The menu bar app watches that file and reloads the engine, so edits take effect without restarting anything."
         learnButton.toolTip = "Press a physical mouse button and its row is selected. Wheel scrolling isn't a button; the wheel click and tilts are."
         table.toolTip = "Right-click a row to clear its mapping. G1/G2 (left/right click) can't be remapped so the mouse can never lock you out."
-        hintLabel.translatesAutoresizingMaskIntoConstraints = false
+        helpBadge = nibbleHelpBadge(
+            "Edits are staged, not written as you go — press Save (or Return) to commit them, "
+            + "and the menu bar reloads the remap engine. Right-click a row to clear it. "
+            + "G1/G2 stay untouched so the mouse can never lock you out.")
+        helpBadge.translatesAutoresizingMaskIntoConstraints = false
 
         let editor = makeEditor()
         editor.translatesAutoresizingMaskIntoConstraints = false
 
         let container = NSView()
-        for v in [profileRow, scroll, learnButton, hintLabel, editor] { container.addSubview(v) }
+        for v in [profileRow, scroll, learnButton, helpBadge, editor] as [NSView] { container.addSubview(v) }
         // Profile 自成一條橫幅；下方才分左右兩欄，
         // 編輯區與表格頂端對齊——先前錨在 profileRow 上，標題就跟 Profile 擠成一行
         NSLayoutConstraint.activate([
@@ -149,16 +146,15 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
             learnButton.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 10),
             learnButton.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
+            learnButton.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
 
-            hintLabel.topAnchor.constraint(equalTo: learnButton.bottomAnchor, constant: 8),
-            hintLabel.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
-            hintLabel.trailingAnchor.constraint(equalTo: scroll.trailingAnchor),
-            hintLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
+            helpBadge.leadingAnchor.constraint(equalTo: learnButton.trailingAnchor, constant: 8),
+            helpBadge.centerYAnchor.constraint(equalTo: learnButton.centerYAnchor),
 
             editor.topAnchor.constraint(equalTo: scroll.topAnchor),
             editor.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
             editor.widthAnchor.constraint(equalToConstant: 300),
-            editor.bottomAnchor.constraint(lessThanOrEqualTo: hintLabel.topAnchor, constant: -8),
+            editor.bottomAnchor.constraint(lessThanOrEqualTo: learnButton.topAnchor, constant: -8),
         ])
         rebuildProfilePopup()
         updateEditor()
