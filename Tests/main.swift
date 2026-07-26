@@ -1,8 +1,13 @@
 // Tests/main.swift — 純邏輯層的回歸測試（檔名必須是 main.swift，Swift 只允許它有頂層語句）
 //
 // 為什麼是這些測試：涵蓋的都是這個專案實際出過事的地方——設定檔合併弄丟改鍵表、
-// 板載 sector 尾端讀取、跨程序 swId 串話、巨集上限、電池 feature 的三種變體。
+// 跨程序 swId 串話、巨集上限、電池 feature 的三種變體、設定檔寫入弄丟不相關的鍵。
 // 硬體 I/O、TCC 權限、AppKit 版面不在此列：那些只有真裝置和眼睛能驗。
+//
+// 沒涵蓋而且值得知道的一項：板載 backup 的「重疊讀」位移算術（sectorSize 不是 16 的
+// 倍數時，最後一塊從 sectorSize-16 讀起再丟掉重複的前段）。那段算術目前寫在
+// cmdOnboard 的迴圈裡，跟裝置 I/O 和寫檔混在一起，抽不出來就測不到。算錯的後果是
+// 備份檔靜靜地壞掉——等到要還原才發現。要測就得先把位移計算抽成純函式。
 //
 // 不用 XCTest：那會帶進 SwiftPM 與一堆建置產物，違背這個專案的零依賴前提。
 // `make test` 直接編譯本檔＋Sources（排除 main.swift）成獨立執行檔。
@@ -188,6 +193,23 @@ do {
         expectEqual(b.percent, 55, "percent read directly")
         expect(b.millivolts == nil, "unified battery reports no voltage")
     } catch { expect(false, "0x1004 battery fallback threw: \(error)") }
+}
+
+do {
+    let tr = MockTransport()
+    let dev = HIDPPDevice(transport: tr, index: 1, swid: 0x0A)
+    tr.queued = [
+        reply(1, 0x00, fn: 0, swid: 0x0A, [0x00, 0, 0]),          // 0x1001 不支援
+        reply(1, 0x00, fn: 0, swid: 0x0A, [0x00, 0, 0]),          // 0x1004 也不支援
+        reply(1, 0x00, fn: 0, swid: 0x0A, [0x08, 0, 0]),          // 0x1000 → index 8
+        reply(1, 0x08, fn: 0, swid: 0x0A, [72, 0, 1]),            // 72%、status 非 0 = 充電
+    ]
+    do {
+        let b = try dev.battery()
+        expectEqual(b.source, "0x1000", "the oldest battery feature is the last resort")
+        expectEqual(b.percent, 72, "level byte is the percentage")
+        expect(b.charging, "a non-zero status byte means charging")
+    } catch { expect(false, "0x1000 battery fallback threw: \(error)") }
 }
 
 // feature index 查過就該快取，不要每次都重問

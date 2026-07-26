@@ -43,6 +43,10 @@ MUTATIONS = [
   "return Battery(millivolts: nil, percent: Int(r[1]),\n                           charging: r[2] == 1"),
  ("battery-1004-reports-volts", "HIDPP.swift", "return Battery(millivolts: nil, percent: Int(r[0]),\n                           charging: r[2] == 1",
   "return Battery(millivolts: 0, percent: Int(r[0]),\n                           charging: r[2] == 1"),
+ ("battery-1000-charging-inverted", "HIDPP.swift", "return Battery(millivolts: nil, percent: Int(r[0]), charging: r[2] != 0, source: \"0x1000\")",
+  "return Battery(millivolts: nil, percent: Int(r[0]), charging: r[2] == 0, source: \"0x1000\")"),
+ ("battery-1000-percent-slot", "HIDPP.swift", "return Battery(millivolts: nil, percent: Int(r[0]), charging: r[2] != 0, source: \"0x1000\")",
+  "return Battery(millivolts: nil, percent: Int(r[1]), charging: r[2] != 0, source: \"0x1000\")"),
  ("feature-cache-disabled", "HIDPP.swift", "if let hit = featureCache[feature] { return hit == 0 ? nil : hit }",
   "if let hit = featureCache[feature], hit == 200 { return hit == 0 ? nil : hit }"),
  # ---- spy button map ----

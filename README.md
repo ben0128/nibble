@@ -148,7 +148,7 @@ Covers the pure layer — HID++ request framing and response matching, error dec
 python3 Tests/mutate.py    # mutation audit: are these tests protecting anything?
 ```
 
-It breaks the implementation 75 ways, one single-point change at a time, and reports which assertions notice. Current score: **72 killed, 3 survive** — one because a single-process test can't observe write atomicity, two because the mutation is semantically equivalent (an unreachable branch, and a default value a later guard makes irrelevant). Each survivor is annotated in the harness with why. Assertions that no mutation could kill were deleted rather than kept for comfort: tests of `Codable`'s own symmetry, tests of the test's own setup, and duplicates of a stronger assertion in the same block.
+It breaks the implementation 77 ways, one single-point change at a time, and reports which assertions notice. Current score: **74 killed, 3 survive** — one because a single-process test can't observe write atomicity, two because the mutation is semantically equivalent (an unreachable branch, and a default value a later guard makes irrelevant). Each survivor is annotated in the harness with why. Assertions that no mutation could kill were deleted rather than kept for comfort: tests of `Codable`'s own symmetry, tests of the test's own setup, and duplicates of a stronger assertion in the same block.
 
 No XCTest: it would pull in SwiftPM and its build directories, which this project deliberately avoids. `Tests/main.swift` is a plain executable with a 20-line assert helper.
 
