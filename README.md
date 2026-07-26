@@ -2,6 +2,8 @@
 
 Lightweight, zero-dependency Logitech mouse control for macOS. Single 516 KB binary. No daemon, no telemetry, no account.
 
+**Site:** [nibble-45j.pages.dev](https://nibble-45j.pages.dev)
+
 > G HUB is a 4 GB install. Nibble is 516 KB.
 
 ## Requirements
