@@ -14,8 +14,16 @@ Lightweight, zero-dependency Logitech mouse control for macOS. Single 256 KB bin
 
 ```sh
 git clone https://github.com/ben0128/nibble && cd nibble
-make
+make                      # build ./nibble
+sudo make install         # optional: /usr/local/bin/nibble
+make app                  # optional: Nibble.app (menu bar on double-click, enables notifications)
 ./nibble status
+```
+
+Homebrew (from the formula in this repo):
+
+```sh
+brew install --build-from-source --formula ./Formula/nibble.rb
 ```
 
 First run needs **Input Monitoring** permission: System Settings → Privacy & Security → Input Monitoring → enable your terminal app → re-run. Error `0xE00002E2` means this permission is missing. No restart needed after granting.
@@ -41,7 +49,8 @@ Button remapping additionally needs **Accessibility** permission (to synthesize 
 | `nibble buttons` | Enumerate programmable buttons (0x1b04 MX-series / 0x8110 G-series) |
 | `nibble spy [seconds]` | Live button-event monitor, G-series diagnostic; auto-stops after N seconds |
 | `nibble remap` | Interactive remap: press a physical button → assign keystroke / system action / disable |
-| `nibble menubar` | Interactive menu bar: battery + DPI/rate/RGB controls (~15 MB resident, opt-in) |
+| `nibble menubar` | Interactive menu bar: battery + DPI/rate/RGB controls; hosts the remap engine (~15 MB, opt-in) |
+| `Nibble.app` | Same as `nibble menubar` but launched from Finder; the bundle also enables low-battery notifications |
 | `nibble ui` | Native settings window (General + Buttons tabs); quits when closed |
 
 Debug: `NIBBLE_DEBUG=1 nibble <cmd>` prints raw HID++ packets.

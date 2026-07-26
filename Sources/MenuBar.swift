@@ -2,6 +2,7 @@
 // UI 哲學：選單即控制台——新增 RAM ≈ 0（NSStatusItem 的錢已經付了）。
 // 每個動作直接呼叫 HIDPPCore API，寫後同步勾選狀態。共用邏輯在 Commands.swift 的 ui* 助手。
 import AppKit
+import UserNotifications
 
 func runMenuBar() -> Int32 {
     let app = NSApplication.shared
@@ -22,6 +23,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastIndex: UInt8 = 1
     private var lastRGB: String?   // 協定無法回讀燈效，追蹤本 session 設過的值
     private var engine: RemapEngineProtocol?
+    private var lowBatteryNotified = false
     private let engineItem = NSMenuItem(title: "改鍵引擎：未啟用", action: nil, keyEquivalent: "")
 
     static let dpiPresets = [400, 800, 1600, 3200, 6400, 12800]
@@ -124,6 +126,24 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func reloadEngineAction() { startEngine() }
 
+    /// 低電量通知：需要 .app bundle（`make app`）；裸 binary 執行時靜默略過。
+    /// 一次充放電週期只提醒一次，充電後重置。
+    private func notifyLowBatteryIfNeeded(percent: Int, charging: Bool, device: String) {
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        if charging || percent > 15 { lowBatteryNotified = false; return }
+        guard !lowBatteryNotified else { return }
+        lowBatteryNotified = true
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "\(device) 電量 \(percent)%"
+            content.body = "該充電了 🔌"
+            center.add(UNNotificationRequest(identifier: "nibble.lowbattery",
+                                             content: content, trigger: nil))
+        }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         engine?.stop()   // 還原 spy remap 表——退出後滑鼠回到原生行為
     }
@@ -158,6 +178,8 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 statusItem.button?.title = "\(warn ? "⚠️" : "🖱")\(b.percent)%"
                 let volt = b.millivolts.map { String(format: " · %.2fV", Double($0) / 1000) } ?? ""
                 detailItem.title = "\(b.charging ? "充電中 ⚡" : "放電中")\(volt)"
+                notifyLowBatteryIfNeeded(percent: b.percent, charging: b.charging,
+                                         device: deviceItem.title)
             }
             syncChecks(dev)
         } catch {

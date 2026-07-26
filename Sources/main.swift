@@ -1,11 +1,14 @@
 // main.swift — 入口與 argv 解析（零依賴，手寫解析）
 import Foundation
 
-let NIBBLE_VERSION = "0.8.0"
+let NIBBLE_VERSION = "1.0.0"
 
 let arguments = CommandLine.arguments.dropFirst()
-let command = arguments.first ?? "help"
-let subArgs = Array(arguments.dropFirst())
+// 從 .app bundle 雙擊啟動時沒有引數（Finder 只會塞 -psn_*）→ 直接進選單列模式
+let bundled = Bundle.main.bundleIdentifier != nil
+let fromFinder = bundled && arguments.allSatisfy { $0.hasPrefix("-psn_") }
+let command = fromFinder ? "menubar" : (arguments.first ?? "help")
+let subArgs = fromFinder ? [] : Array(arguments.dropFirst())
 
 switch command {
 case "status":   exit(cmdStatus())
