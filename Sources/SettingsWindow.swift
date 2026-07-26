@@ -51,6 +51,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     private let buttonsPane = ButtonsPane()
     private var headerTimer: Timer?
     private var statusClear: DispatchWorkItem?
+    private var rememberWork: DispatchWorkItem?
     var initialTab: String?
     private static let rateValues = [125, 250, 500, 1000]
     private static let rgbKinds = ["off", "cycle", "breathing"]
@@ -90,16 +91,15 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         dpiCustomRow.spacing = 6
         dpiCustomRow.alignment = .centerY
 
-        // 「斷電就沒了」與它的解法擺在一起，說明收進勾選框旁的「?」
-        let saveBtn = NSButton(title: "Save current as my settings", target: self, action: #selector(saveAction))
+        // 勾選框就是「保留我的設定」的唯一開關：勾了之後每次改動自動記錄，
+        // 不再需要一顆語意跟右下角 Save 撞車的按鈕
         let startupRow = NSStackView(views: [
             replayCheck,
             nibbleHelpBadge("Everything on this tab is written to the mouse immediately, and lost when it powers "
-                          + "off — the mouse falls back to its onboard profile. Ticking this re-applies your saved "
-                          + "settings at login."),
-            saveBtn,
+                          + "off — the mouse falls back to its onboard profile. With this ticked, whatever you set "
+                          + "here is remembered and re-applied at login; there's nothing to save by hand."),
         ])
-        startupRow.spacing = 10
+        startupRow.spacing = 8
         startupRow.alignment = .centerY
 
         let generalStack = NSStackView(views: [
@@ -224,6 +224,19 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         headerTimer = Timer.scheduledTimer(withTimeInterval: 45, repeats: true) { [weak self] _ in
             self?.refreshHeader()
         }
+    }
+
+    /// 勾了「登入重新套用」就代表使用者要保留現況——之後每次改動都自動記錄。
+    /// 延遲 1.5 秒合併寫入：連續拖 DPI 不該變成一連串寫檔＋引擎重載。
+    private func rememberIfEnabled() {
+        guard replayCheck.state == .on else { return }
+        rememberWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let dev = try? self.openDevice() else { return }
+            try? uiSaveConfig(dev, rgb: self.lastRGB)
+        }
+        rememberWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
     }
 
     /// 狀態列是兩個分頁共用的，訊息卻是當下情境的——不清掉的話，
@@ -426,13 +439,4 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         } catch { setStatus("❌ \(error)") }
     }
 
-    @objc private func saveAction() {
-        do {
-            let dev = try openDevice()
-            try uiSaveConfig(dev, rgb: lastRGB)
-            statusLabel.stringValue = replayCheck.state == .on
-                ? "Saved ✓ these settings come back at login"
-                : "Saved ✓ tick the box to have them re-applied at login"
-        } catch { setStatus("❌ \(error)") }
-    }
 }
