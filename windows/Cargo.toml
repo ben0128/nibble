@@ -2,7 +2,7 @@
 # nibble-core 零 Win32 依賴——任何平台都能 cargo test，這是它存在的意義。
 [workspace]
 resolver = "2"
-members = ["crates/nibble-core", "spike"]
+members = ["crates/nibble-core", "crates/nibble-win", "spike"]
 
 [workspace.package]
 edition = "2021"

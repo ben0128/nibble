@@ -246,7 +246,7 @@ impl<T: Transport> Device<T> {
     /// ReportRate（0x8060）fn1：回報「間隔毫秒」→ 換算 Hz
     pub fn report_rate_hz(&mut self) -> Result<u16, Error> {
         let ms = u16::from(self.call(0x8060, 1, &[])?[0]);
-        Ok(if ms > 0 { 1000 / ms } else { 0 })
+        Ok(1000u16.checked_div(ms).unwrap_or(0))
     }
 
     /// fn0：支援的回報率 bitfield，bit n = 間隔 n+1 ms

@@ -44,15 +44,53 @@ jobs:
         working-directory: windows
     steps:
       - uses: actions/checkout@v4
-      - run: cargo test -p nibble-core
-      - run: cargo build --release -p m0-probe
-      - name: probe size — the size claim gets measured, never assumed
-        run: Get-Item target/release/m0-probe.exe | Format-List Name, Length
-      # M0 的免工具鏈路徑：Ben 的 VM 直接從 Actions 下載這個 exe 跑，
-      # 不必在 VM 裡裝 Rust + VS Build Tools。x64 版在 Win11 ARM 的模擬層執行——
-      # 這同時驗掉 spec §8「x64-under-emulation」那條風險。
+      - run: cargo test --workspace
+      - run: cargo build --release --workspace
+      - name: sizes — the size claim gets measured, never assumed
+        run: Get-ChildItem target/release/*.exe | Format-List Name, Length
+      # 無裝置路徑的「真執行」煙霧測試：runner 上沒有羅技裝置，
+      # 所以 doctor 必須 exit 1、transports 必須 fail 得誠實、version 必須 exit 0。
+      # 這是本機（macOS）給不了的驗證層——exit codes 和 JSON 形狀在真 Windows 上鎖定。
+      - name: smoke — version exits 0
+        shell: pwsh
+        run: |
+          ./target/release/nibble.exe version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $v = ./target/release/nibble.exe version --json | ConvertFrom-Json
+          if (-not $v.version) { Write-Error "version --json missing key"; exit 1 }
+      - name: smoke — help exits 0, unknown command exits 64
+        shell: pwsh
+        run: |
+          ./target/release/nibble.exe help > $null
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          ./target/release/nibble.exe nosuchcommand > $null
+          if ($LASTEXITCODE -ne 64) { Write-Error "unknown command should exit 64, got $LASTEXITCODE"; exit 1 }
+      - name: smoke — doctor reports the truth on a mouseless runner
+        shell: pwsh
+        run: |
+          $env:NIBBLE_CONFIG = "$env:TEMP\nibble-ci.json"
+          $d = ./target/release/nibble.exe doctor --json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 1) { Write-Error "doctor should exit 1 with no device, got $LASTEXITCODE"; exit 1 }
+          if ($d.ok) { Write-Error "doctor claims ok on a runner with no Logitech device"; exit 1 }
+          if (-not ($d.checks | Where-Object { $_.check -eq "transports" -and $_.status -eq "fail" })) {
+            Write-Error "transports check should fail honestly"; exit 1 }
+      - name: smoke — battery fails with the documented error shape
+        shell: pwsh
+        run: |
+          $b = ./target/release/nibble.exe battery --json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 2) { Write-Error "battery should exit 2 with no transport, got $LASTEXITCODE"; exit 1 }
+          if (-not $b.error -or -not $b.code) { Write-Error "error JSON missing error/code keys"; exit 1 }
+      # M0 的免工具鏈路徑：VM 直接從 Actions 下載 exe 跑（x64 在 Win11 ARM 模擬層執行，
+      # 順便驗掉 spec §8 那條風險）。CLI+tray 也一起上傳——M0 過閘後 VM 內第一時間可實測。
       - uses: actions/upload-artifact@v4
         with:
           name: m0-probe-x64
           path: windows/target/release/m0-probe.exe
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nibble-win-x64
+          path: |
+            windows/target/release/nibble.exe
+            windows/target/release/nibble-tray.exe
           retention-days: 30

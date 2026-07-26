@@ -1,0 +1,39 @@
+# nibble-win — 所有碰 Win32 的東西。兩個 [[bin]]：
+#   nibble.exe       console subsystem（CLI；終端機印得出字）
+#   nibble-tray.exe  windows subsystem（常駐托盤；啟動不閃黑窗）
+# PE subsystem 烙死在檔頭，所以是兩個 exe 不是一個——設計 §0。
+[package]
+name = "nibble-win"
+version = "0.1.0"
+description = "Nibble for Windows — Logitech HID++ CLI + tray (raw Win32)"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+nibble-core = { path = "../nibble-core" }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.60"
+features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Devices_HumanInterfaceDevice",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Threading",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Shell",
+]
+
+[[bin]]
+name = "nibble"
+path = "src/bin/nibble.rs"
+
+[[bin]]
+name = "nibble-tray"
+path = "src/bin/nibble-tray.rs"
