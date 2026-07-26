@@ -7,8 +7,8 @@
     <key>CFBundleIdentifier</key><string>com.ben0128.nibble</string>
     <key>CFBundleExecutable</key><string>nibble</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.2.1</string>
-    <key>CFBundleVersion</key><string>1.2.1</string>
+    <key>CFBundleShortVersionString</key><string>1.3.0</string>
+    <key>CFBundleVersion</key><string>1.3.0</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <!-- 選單列 App：不進 Dock、不搶 focus -->
     <key>LSUIElement</key><true/>

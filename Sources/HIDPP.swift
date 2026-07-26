@@ -34,6 +34,12 @@ public enum HIDPP {
         0x8110: "MouseButtonSpy",
     ]
 
+    /// HID++ 的 software ID（1–15）用來認「這則回應是回給誰的」。
+    /// macOS 會把裝置回應送給每個開著該裝置的程序——選單列、設定視窗、CLI 同時在跑時，
+    /// 若大家用同一個 ID 就會互相撿到對方的回應（症狀：讀到別人那次查詢的資料）。
+    /// 取自 PID，同一程序內固定、不同程序間幾乎不重複，也方便除錯時對照。
+    public static let softwareID: UInt8 = UInt8(getpid() % 15) + 1
+
     /// Logitech 官方 CID（控制 ID）名稱表——只收錄有把握的；未知 CID 顯示 hex，
     /// 靠 press-to-identify 定位（M5c）。G 系列實測到的 CID 陸續補進來。
     public static let cidNames: [UInt16: String] = [
@@ -97,7 +103,7 @@ public final class HIDPPDevice {
     public let swid: UInt8
     private var featureCache: [UInt16: UInt8] = [:]   // 0 = 已確認不支援
 
-    public init(transport: HIDPPTransport, index: UInt8, swid: UInt8 = 0x0A) {
+    public init(transport: HIDPPTransport, index: UInt8, swid: UInt8 = HIDPP.softwareID) {
         self.transport = transport
         self.index = index
         self.swid = swid
