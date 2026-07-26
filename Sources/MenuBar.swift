@@ -27,7 +27,7 @@ func runMenuBar() -> Int32 {
         if let id = Bundle.main.bundleIdentifier {
             let others = NSRunningApplication.runningApplications(withBundleIdentifier: id)
                 .filter { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
-            others.first?.activate(options: [.activateIgnoringOtherApps])
+            others.first?.activate()
         }
         return 0
     }
@@ -492,8 +492,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func openPanel(tab: String?) {
         // 已經開著就把它帶到最前面，不要每次點都開一個新視窗
         if let running = settingsProcess, running.isRunning {
-            NSRunningApplication(processIdentifier: running.processIdentifier)?
-                .activate(options: [.activateIgnoringOtherApps])
+            NSRunningApplication(processIdentifier: running.processIdentifier)?.activate()
             return
         }
         guard let exe = Bundle.main.executablePath else { return }

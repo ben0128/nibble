@@ -114,6 +114,16 @@ Macros play on their own queue, so a long sequence never blocks the button that 
 | No Logitech device found | Needs vendor `0x046D` with HID usage page `0xFF00` (receiver) or `0xFF43` (Bluetooth-direct) |
 | Writes send but no replies ever arrive | If hacking on the code: IOHIDManager must outlive the device object |
 
+## Tests
+
+```sh
+make test
+```
+
+Covers the pure layer — HID++ request framing and response matching, error decoding, the battery feature fallback chain, key and macro parsing with their limits, config encoding, and button-map key parsing. No mouse required; a mock transport stands in for the device. Hardware I/O, TCC permissions and AppKit layout are deliberately out of scope — those are verified against a real device.
+
+No XCTest: it would pull in SwiftPM and its build directories, which this project deliberately avoids. `Tests/main.swift` is a plain executable with a 20-line assert helper.
+
 ## Development
 
 `make app` signs the bundle with a self-signed identity named `Nibble Dev` if one exists in your keychain, falling back to ad-hoc. Either way, **expect to re-grant Accessibility after rebuilding the app**: macOS binds the grant to the cdhash for any certificate it cannot chain to a trusted root, and a self-signed certificate is not one. Only a Developer ID certificate makes the grant survive rebuilds. The self-signed identity is still worth having — it produces a proper sealed bundle rather than an ad-hoc one — and is created like this:

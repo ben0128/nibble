@@ -3,3 +3,4 @@ nibble
 
 Nibble.app/
 .build/
+.nibble-tests

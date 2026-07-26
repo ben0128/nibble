@@ -78,8 +78,9 @@ func parseMacro(_ seq: String) -> [MacroStep]? {
         if tok.isEmpty { continue }
         if tok.hasSuffix("ms"), let v = UInt32(tok.dropLast(2)) {
             steps.append(.delay(v * 1_000)); totalDelay += UInt64(v) * 1_000
-        } else if tok.hasSuffix("s"), let v = Double(tok.dropLast(1)), v >= 0 {
-            let us = UInt32(min(v, 30) * 1_000_000)
+        } else if tok.hasSuffix("s"), let v = Double(tok.dropLast(1)), v >= 0, v < 600 {
+            // 不夾值：夾成 30s 等於把「打錯」默默變成「凍結輸入 30 秒」，該讓它解析失敗
+            let us = UInt32(v * 1_000_000)
             steps.append(.delay(us)); totalDelay += UInt64(us)
         } else if let (f, k) = parseCombo(tok) {
             steps.append(.key(f, k))

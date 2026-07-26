@@ -60,16 +60,22 @@ protocol RemapEngineProtocol: AnyObject {
     func stop()
 }
 
+/// config 的 "G7" 之類鍵名 → spy 層的 0-based 索引。
+/// G1/G2（左右鍵）永遠排除：接管主鍵一旦出錯，使用者連點都點不動。
+func parseSpyButtonMap(_ savedMap: [String: ButtonAction]) -> [Int: ButtonAction] {
+    var m: [Int: ButtonAction] = [:]
+    for (key, action) in savedMap where key.hasPrefix("G") {
+        if let n = Int(key.dropFirst()), n >= 3 { m[n - 1] = action }
+    }
+    return m
+}
+
 /// 依裝置能力自動選路建引擎；config 的鍵名（"G7" 或 CID 名稱）在這裡解析成各自的索引
 func makeRemapEngine(transport: ReceiverTransport, dev: HIDPPDevice,
                      savedMap: [String: ButtonAction]) -> RemapEngineProtocol? {
     guard !savedMap.isEmpty else { return nil }
     if dev.has(0x8110) {
-        var m: [Int: ButtonAction] = [:]
-        for (key, action) in savedMap where key.hasPrefix("G") {
-            if let n = Int(key.dropFirst()), n >= 3 { m[n - 1] = action }   // G1/G2 永不接管
-        }
-        return RemapEngine(transport: transport, dev: dev, mappings: m)
+        return RemapEngine(transport: transport, dev: dev, mappings: parseSpyButtonMap(savedMap))
     }
     if dev.has(0x1b04), let controls = try? dev.controls() {
         var m: [UInt16: ButtonAction] = [:]

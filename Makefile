@@ -71,8 +71,16 @@ uninstall:
 	rm -rf "$(APP_DEST)/$(APP)"
 	@echo "kept: ~/.config/nibble.json and ~/.config/nibble/backups (your settings and onboard dumps)"
 
+# 測試：純邏輯層（協定組包、解析、設定檔）——不需要滑鼠也不碰系統權限。
+# 不用 XCTest：那會帶進 SwiftPM 與建置產物，這個專案刻意維持零依賴。
+TEST_SOURCES := $(filter-out Sources/main.swift, $(SOURCES)) $(wildcard Tests/*.swift)
+
+test:
+	@swiftc -swift-version 5 $(TEST_SOURCES) -o .nibble-tests
+	@./.nibble-tests; status=$$?; rm -f .nibble-tests; exit $$status
+
 clean:
-	rm -f nibble
+	rm -f nibble .nibble-tests
 	rm -rf $(APP)
 
-.PHONY: app install-app install uninstall clean
+.PHONY: app install-app install uninstall test clean
