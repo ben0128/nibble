@@ -61,10 +61,14 @@ jobs:
       - name: smoke — help exits 0, unknown command exits 64
         shell: pwsh
         run: |
-          ./target/release/nibble.exe help > $null
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          ./target/release/nibble.exe nosuchcommand > $null
-          if ($LASTEXITCODE -ne 64) { Write-Error "unknown command should exit 64, got $LASTEXITCODE"; exit 1 }
+          ./target/release/nibble.exe help | Select-Object -First 1
+          $h = $LASTEXITCODE
+          ./target/release/nibble.exe nosuchcommand | Out-Null
+          $u = $LASTEXITCODE
+          Write-Host "help=$h unknown=$u"
+          if ($h -ne 0) { Write-Host "::error::help should exit 0, got $h"; exit 1 }
+          if ($u -ne 64) { Write-Host "::error::unknown command should exit 64, got $u"; exit 1 }
+          exit 0
       - name: smoke — doctor reports the truth on a mouseless runner
         shell: pwsh
         run: |
