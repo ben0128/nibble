@@ -1,0 +1,50 @@
+# CI — 兩份實作各自綠，共同向量（docs/fixtures/）兩邊都跑。
+#
+# 這補上「本機沒有 Windows」的缺口：windows job 在真的 Windows 上跑 nibble-core
+# 的全部測試（含原子寫入語意）並「真的連結」出 m0-probe.exe——比本機的
+# cargo check 多一層。硬體路徑仍然只有 Ben 的 VM 能驗（M0 閘門）。
+#
+# mutation 審計（Tests/mutate.py 與 Rust 探針）刻意不進 CI：那是「改測試時
+# 證明測試會叫」的本地工具，每次 push 跑 76 個變異體太重也沒有意義。
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift-macos:
+    name: "macOS: make test (Swift + fixtures)"
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make test
+
+  rust-linux:
+    name: "Linux: nibble-core vs fixtures, clippy, fmt"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo test --workspace
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo fmt --check
+
+  rust-windows:
+    name: "Windows: nibble-core + probe links for real"
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo test -p nibble-core
+      - run: cargo build --release -p m0-probe
+      - name: probe size — the size claim gets measured, never assumed
+        run: Get-Item target/release/m0-probe.exe | Format-List Name, Length
