@@ -20,6 +20,8 @@ make
 
 First run needs **Input Monitoring** permission: System Settings → Privacy & Security → Input Monitoring → enable your terminal app → re-run. Error `0xE00002E2` means this permission is missing. No restart needed after granting.
 
+Button remapping additionally needs **Accessibility** permission (to synthesize keyboard/media events): the host app of `nibble menubar` prompts on first engine start.
+
 ## Commands
 
 | Command | Effect |
@@ -36,6 +38,9 @@ First run needs **Input Monitoring** permission: System Settings → Privacy & S
 | `nibble config init\|show` | Create from current state / print `~/.config/nibble.json` |
 | `nibble apply` | Apply config file (runtime writes) |
 | `nibble replay install\|uninstall` | Auto-`apply` at login via one-shot launchd agent |
+| `nibble buttons` | Enumerate programmable buttons (0x1b04 MX-series / 0x8110 G-series) |
+| `nibble spy [seconds]` | Live button-event monitor, G-series diagnostic; auto-stops after N seconds |
+| `nibble remap` | Interactive remap: press a physical button → assign keystroke / system action / disable |
 | `nibble menubar` | Interactive menu bar: battery + DPI/rate/RGB controls (~15 MB resident, opt-in) |
 | `nibble ui` | Native settings window; quits when closed (zero resident) |
 
@@ -45,7 +50,10 @@ Exit codes: `0` ok · `1` no awake device or value not applied · `2` transport/
 ## Config file `~/.config/nibble.json`
 
 ```json
-{ "dpi": 1600, "reportRateHz": 1000, "rgb": "off" }
+{ "dpi": 1600, "reportRateHz": 1000, "rgb": "off",
+  "buttonMaps": { "G502 LIGHTSPEED Wireless Gaming Mouse": {
+    "G7": { "type": "keys", "keys": "cmd+space" },
+    "G8": { "type": "system", "action": "mission-control" } } } }
 ```
 
 | Key | Type | Values |
@@ -63,6 +71,7 @@ Omitted keys are left untouched.
 - All writes are **runtime** (device RAM, persist flag = 0). A power cycle reverts the mouse to its onboard profile — `nibble replay install` re-applies your config at login.
 - Report-rate and RGB writes require **host mode**; commands switch the mode flag automatically. The flag also reverts on power cycle.
 - Onboard flash (HID++ feature `0x8100`) is **read-only by design**. `onboard backup` dumps every sector to `~/.config/nibble/backups/` as `.bin` + `.json` metadata — your escape hatch is restoring factory settings via G HUB on any machine.
+- Button remaps are hosted by `nibble menubar` (the opt-in resident mode). G-series path: the spy-layer remap zeroes the button's standard HID output and Nibble synthesizes your action from the event stream (`0x8110`). Quitting the menu bar restores factory behavior immediately; a power cycle does too. Actions: `keys` (e.g. `cmd+shift+4`), `system` (`mission-control`, `play-pause`, `next-track`, `prev-track`, `volume-up`, `volume-down`, `mute`, `app:Name`), `disable`. G1/G2 (left/right click) are never remapped.
 - Zero resident processes unless you opt into `menubar`.
 
 ## Troubleshooting

@@ -279,11 +279,23 @@ func cmdOnboard(_ args: [String]) -> Int32 {
 // MARK: - 設定檔 + apply（重放的核心）
 
 struct BMConfig: Codable {
-    var dpi: Int?
-    var reportRateHz: Int?
-    var rgb: String?           // "off" | "keep"
-    var wheelMode: String?     // "free" | "ratchet"（MX 系）
-    var wheelThreshold: Int?
+    var dpi: Int? = nil
+    var reportRateHz: Int? = nil
+    var rgb: String? = nil            // "off" | "keep"
+    var wheelMode: String? = nil      // "free" | "ratchet"（MX 系）
+    var wheelThreshold: Int? = nil
+    // per-device 改鍵表：裝置名稱 → { "G7": {type,keys,action} }（ButtonAction 定義在 Actions.swift）
+    var buttonMaps: [String: [String: ButtonAction]]? = nil
+}
+
+func loadConfig() -> BMConfig? {
+    (try? Data(contentsOf: bmConfigURL)).flatMap { try? JSONDecoder().decode(BMConfig.self, from: $0) }
+}
+
+func saveConfig(_ c: BMConfig) throws {
+    let enc = JSONEncoder()
+    enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+    try (try enc.encode(c)).write(to: bmConfigURL)
 }
 
 let bmConfigURL = FileManager.default.homeDirectoryForCurrentUser
@@ -293,12 +305,12 @@ func cmdConfig(_ args: [String]) -> Int32 {
     switch args.first ?? "show" {
     case "init":
         return withDevice { dev, _ in
-            let cfg = BMConfig(dpi: try? dev.currentDPI(),
-                               reportRateHz: try? dev.reportRateHz(),
-                               rgb: "keep", wheelMode: nil, wheelThreshold: nil)
-            let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try (try enc.encode(cfg)).write(to: bmConfigURL)
-            print("✅ 以目前裝置狀態建立 \(bmConfigURL.path)（rgb 預設 keep，要省電改成 \"off\"）")
+            var cfg = loadConfig() ?? BMConfig()   // 合併：不蓋掉既有的改鍵表
+            cfg.dpi = try? dev.currentDPI()
+            cfg.reportRateHz = try? dev.reportRateHz()
+            if cfg.rgb == nil { cfg.rgb = "keep" }
+            try saveConfig(cfg)
+            print("✅ 以目前裝置狀態更新 \(bmConfigURL.path)（rgb 預設 keep，要省電改成 \"off\"）")
             return 0
         }
     case "show":
@@ -425,12 +437,13 @@ func uiSetRGB(_ dev: HIDPPDevice, kind: String) throws -> Int {
     return applied
 }
 
-/// 以目前裝置狀態＋UI 記住的 RGB 狀態寫設定檔
+/// 以目前裝置狀態＋UI 記住的 RGB 狀態寫設定檔（合併，不動改鍵表）
 func uiSaveConfig(_ dev: HIDPPDevice, rgb: String?) throws {
-    let cfg = BMConfig(dpi: try? dev.currentDPI(), reportRateHz: try? dev.reportRateHz(),
-                       rgb: rgb == "off" ? "off" : "keep", wheelMode: nil, wheelThreshold: nil)
-    let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-    try (try enc.encode(cfg)).write(to: bmConfigURL)
+    var cfg = loadConfig() ?? BMConfig()
+    cfg.dpi = try? dev.currentDPI()
+    cfg.reportRateHz = try? dev.reportRateHz()
+    cfg.rgb = rgb == "off" ? "off" : (cfg.rgb ?? "keep")
+    try saveConfig(cfg)
 }
 
 @discardableResult
@@ -513,6 +526,109 @@ func cmdButtons() -> Int32 {
                          type.joined(separator: ",") as NSString))
         }
         print("\n （divert = 可交給軟體接管；pos = 遊戲鼠實體位置編號；M5b 引擎未上線，本指令唯讀）")
+        return 0
+    }
+}
+
+// MARK: - M5b：spy 診斷 + 互動改鍵
+
+func cmdSpy(_ args: [String]) -> Int32 {
+    withDevice { dev, tr in
+        guard dev.has(0x8110) else { print("此裝置沒有 0x8110（MX 系請等 0x1b04 引擎）"); return 1 }
+        guard let spyIdx = try dev.featureIndex(of: 0x8110) else { return 1 }
+        let n = try dev.buttonSpyCount()
+        let seconds = args.first.flatMap(Double.init)   // `nibble spy 15` = 15 秒後自動結束
+        print("spy 開始（\(n) 顆鍵）——按滑鼠按鍵看事件；\(seconds.map { "\(Int($0)) 秒後" } ?? "Ctrl+C ")結束並還原\n")
+        try dev.buttonSpyStart()
+        var prev: UInt16 = 0
+        tr.onReport = { p in
+            guard p.count >= 5, p[1] == spyIdx, p[2] == 0x00 else { return }
+            let mask = UInt16(p[3]) << 8 | UInt16(p[4])
+            let newly = mask & ~prev
+            let released = prev & ~mask
+            prev = mask
+            let hex = p.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " ")
+            var line = "event [\(hex)…] mask=\(String(format: "%04X", mask))"
+            if newly != 0 { line += "  ↓ G\((0..<16).filter { newly & (1 << $0) != 0 }.map { String($0 + 1) }.joined(separator: ",G"))" }
+            if released != 0 { line += "  ↑ G\((0..<16).filter { released & (1 << $0) != 0 }.map { String($0 + 1) }.joined(separator: ",G"))" }
+            print(line)
+        }
+        signal(SIGINT, SIG_IGN)
+        let sig = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+        var done = false
+        sig.setEventHandler { done = true }
+        sig.resume()
+        let deadline = seconds.map { Date().addingTimeInterval($0) }
+        while !done {
+            if let dl = deadline, Date() >= dl { break }
+            CFRunLoopRunInMode(.defaultMode, 0.2, true)
+        }
+        tr.onReport = nil
+        try? dev.buttonSpyStop()
+        print("\nspy 結束，已還原")
+        return 0
+    }
+}
+
+func cmdRemap() -> Int32 {
+    withDevice { dev, tr in
+        guard dev.has(0x8110) else { print("MX 系（0x1b04 divert）引擎尚未實作——目前支援 G 系"); return 1 }
+        guard let spyIdx = try dev.featureIndex(of: 0x8110) else { return 1 }
+        let devName = (try? dev.name()) ?? "unknown"
+        print("按下你要改的滑鼠按鍵…（30 秒逾時；⚠️ 左右鍵 G1/G2 不建議改）")
+        try dev.buttonSpyStart()
+        var captured: Int?
+        var prev: UInt16 = 0
+        tr.onReport = { p in
+            guard p.count >= 5, p[1] == spyIdx, p[2] == 0x00 else { return }
+            let mask = UInt16(p[3]) << 8 | UInt16(p[4])
+            let newly = mask & ~prev
+            prev = mask
+            if captured == nil, newly != 0 {
+                captured = (0..<16).first { newly & (1 << $0) != 0 }
+            }
+        }
+        let deadline = Date().addingTimeInterval(30)
+        while captured == nil && Date() < deadline { CFRunLoopRunInMode(.defaultMode, 0.2, true) }
+        tr.onReport = nil
+        try? dev.buttonSpyStop()
+        guard let btn = captured else { print("沒等到按鍵，取消"); return 1 }
+        let bName = "G\(btn + 1)"
+        if btn <= 1 { print("→ 抓到 \(bName)（左/右鍵）——拒絕改主鍵，防鎖死"); return 1 }
+        print("→ 抓到 \(bName)")
+        print("動作類型？ [k]快捷鍵 [s]系統動作 [d]還原預設 [x]停用這顆鍵：", terminator: "")
+        guard let choice = readLine()?.lowercased().first else { return 1 }
+        var action: ButtonAction?
+        switch choice {
+        case "k":
+            print("輸入組合（例 cmd+shift+4 / ctrl+left / f13）：", terminator: "")
+            guard let combo = readLine(), parseCombo(combo) != nil else { print("解析失敗"); return 64 }
+            action = ButtonAction(type: "keys", keys: combo, action: nil)
+        case "s":
+            print("選項：\(SystemAction.allCases.map(\.rawValue).joined(separator: " / ")) / app:名稱")
+            print("輸入：", terminator: "")
+            guard let s = readLine(), !s.isEmpty else { return 1 }
+            action = ButtonAction(type: "system", keys: nil, action: s)
+        case "d":
+            action = nil
+        case "x":
+            action = ButtonAction(type: "disable", keys: nil, action: nil)
+        default:
+            return 64
+        }
+        var cfg = loadConfig() ?? BMConfig()
+        var maps = cfg.buttonMaps ?? [:]
+        var devMap = maps[devName] ?? [:]
+        if let action { devMap[bName] = action } else { devMap.removeValue(forKey: bName) }
+        maps[devName] = devMap.isEmpty ? nil : devMap
+        cfg.buttonMaps = maps
+        try saveConfig(cfg)
+        let desc = action.map { $0.type == "keys" ? "keys: \($0.keys ?? "")" : $0.type == "disable" ? "停用" : "system: \($0.action ?? "")" } ?? "還原預設"
+        print("✓ \(bName) → \(desc)（已存檔）")
+        print("  生效方式：menubar 常駐時自動載入——重開 menubar 或點選單「重新載入改鍵引擎」")
+        if action != nil, action?.type != "disable", !axTrusted() {
+            print("  ⚠️ 尚未授權「輔助使用」——menubar 啟動引擎時會跳授權視窗")
+        }
         return 0
     }
 }

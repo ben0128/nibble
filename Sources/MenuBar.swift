@@ -21,6 +21,8 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var rateItems: [Int: NSMenuItem] = [:]
     private var lastIndex: UInt8 = 1
     private var lastRGB: String?   // 協定無法回讀燈效，追蹤本 session 設過的值
+    private var engine: RemapEngine?
+    private let engineItem = NSMenuItem(title: "改鍵引擎：未啟用", action: nil, keyEquivalent: "")
 
     static let dpiPresets = [400, 800, 1600, 3200, 6400, 12800]
     static let ratePresets = [1000, 500, 250, 125]
@@ -33,6 +35,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self   // menuWillOpen → refresh，開選單永遠是新狀態
         menu.addItem(deviceItem)
         menu.addItem(detailItem)
+        menu.addItem(engineItem)
         menu.addItem(.separator())
 
         let dpiRoot = NSMenuItem(title: "DPI", action: nil, keyEquivalent: "")
@@ -72,6 +75,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(makeItem("開啟設定面板…", #selector(openPanelAction)))
+        menu.addItem(makeItem("重新載入改鍵引擎", #selector(reloadEngineAction)))
         menu.addItem(makeItem("存為預設（登入自動重放）", #selector(saveAction)))
         menu.addItem(makeItem("套用設定檔（apply）", #selector(applyAction)))
         menu.addItem(.separator())
@@ -79,9 +83,53 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
 
         refresh()
+        startEngine()
         timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             self?.refresh()
         }
+    }
+
+    /// 改鍵引擎：讀 config 的 per-device 映射，掛上 spy 事件流（G 系路徑）
+    private func startEngine() {
+        engine?.stop()
+        engine = nil
+        guard let maps = loadConfig()?.buttonMaps, !maps.isEmpty else {
+            engineItem.title = "改鍵引擎：未啟用（用 nibble remap 新增映射）"
+            return
+        }
+        do {
+            let dev = try openDevice()
+            let devName = (try? dev.name()) ?? "unknown"
+            guard let devMap = maps[devName], !devMap.isEmpty else {
+                engineItem.title = "改鍵引擎：此裝置（\(devName)）無映射"
+                return
+            }
+            var mappings: [Int: ButtonAction] = [:]
+            for (key, action) in devMap where key.hasPrefix("G") {
+                if let n = Int(key.dropFirst()), n >= 3 { mappings[n - 1] = action }   // G1/G2 永不接管
+            }
+            let needsAX = mappings.values.contains { $0.type == "keys" || $0.type == "system" }
+            if needsAX && !axTrusted(promptIfNeeded: true) {
+                engineItem.title = "改鍵引擎：⚠️ 授權「輔助使用」後按重新載入"
+                return
+            }
+            guard let tr = dev.transport as? ReceiverTransport,
+                  let eng = RemapEngine(transport: tr, dev: dev, mappings: mappings) else {
+                engineItem.title = "改鍵引擎：裝置不支援（無 0x8110）"
+                return
+            }
+            try eng.start()
+            engine = eng   // engine 持有 dev+transport → 事件流常駐
+            engineItem.title = "改鍵引擎：✓ \(eng.mappingCount) 個映射運作中"
+        } catch {
+            engineItem.title = "改鍵引擎：❌ \(error)"
+        }
+    }
+
+    @objc private func reloadEngineAction() { startEngine() }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        engine?.stop()   // 還原 spy remap 表——退出後滑鼠回到原生行為
     }
 
     private func makeItem(_ title: String, _ sel: Selector, key: String = "") -> NSMenuItem {

@@ -13,6 +13,8 @@ public final class ReceiverTransport: HIDPPTransport {
     private let inBuf: UnsafeMutablePointer<UInt8>
     private var inbox: [[UInt8]] = []
     public let productID: Int
+    /// 事件旁聽：每一則進來的 report（含裝置主動通知）都會呼叫——改鍵引擎靠這個吃 spy 事件
+    public var onReport: (([UInt8]) -> Void)?
     let debug = ProcessInfo.processInfo.environment["NIBBLE_DEBUG"] != nil
 
     /// 找到第一個羅技 vendor collection（接收器或有線滑鼠）並開啟
@@ -68,6 +70,7 @@ public final class ReceiverTransport: HIDPPTransport {
         if me.debug { print("← id=0x\(String(format: "%02X", reportID)) [\(me.hex(p))]") }
         me.inbox.append(p)
         if me.inbox.count > 100 { me.inbox.removeFirst(me.inbox.count - 100) }   // 通知洪水保險
+        me.onReport?(p)
     }
 
     private func hex(_ b: [UInt8]) -> String { b.map { String(format: "%02X", $0) }.joined(separator: " ") }

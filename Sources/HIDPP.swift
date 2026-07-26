@@ -269,6 +269,22 @@ public final class HIDPPDevice {
         return Array(r.prefix(count))
     }
 
+    public func buttonSpyRemappingFull() throws -> [UInt8] {
+        Array(try call(feature: 0x8110, function: 3).prefix(16))
+    }
+
+    /// 開始 spy：按鍵事件以 HID++ 通知送達（feature index + fnsw 0x00 + bitmask）
+    public func buttonSpyStart() throws { _ = try call(feature: 0x8110, function: 1) }
+    public func buttonSpyStop() throws { _ = try call(feature: 0x8110, function: 2) }
+
+    /// 寫 spy 層 remap 表（runtime、斷電還原）。值 0 = 拔掉該鍵的標準 HID 輸出，
+    /// 事件只走 spy 流——這就是 G 系的「divert」。
+    public func buttonSpySetRemapping(_ table: [UInt8]) throws {
+        var t = Array(table.prefix(16))
+        while t.count < 16 { t.append(0) }
+        _ = try call(feature: 0x8110, function: 4, params: t)
+    }
+
     // MARK: 高階 API（M2 寫入組 — 全部 runtime 寫入，persist 一律 0，不碰 flash）
 
     /// 寫 DPI 後回讀驗證，回傳裝置實際生效值
