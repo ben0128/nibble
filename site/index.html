@@ -491,9 +491,13 @@ make
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const term = document.getElementById('term');
     const lines = Array.from(term.querySelectorAll('.t-line'));
-    lines.forEach(l => l.classList.add('hide'));
+    // The first block (nibble status) stays visible on load — a fixed-height
+    // terminal that starts fully hidden reads as a big black box. Only the
+    // commands after the first gap animate in.
+    const start = lines.findIndex(l => l.classList.contains('gap')) + 1;
+    lines.slice(start).forEach(l => l.classList.add('hide'));
     const pin = () => { term.scrollTop = term.scrollHeight; };  // keep the latest line in view, like a real terminal
-    let i = 0;
+    let i = start;
     function next() {
       if (i >= lines.length) return;
       const line = lines[i++];
