@@ -43,6 +43,9 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         statusLabel.font = .systemFont(ofSize: 11)
         linkLabel.textColor = .secondaryLabelColor
         linkLabel.font = .systemFont(ofSize: 11)
+        rgbControl.toolTip = "Written to the device immediately. The mouse has no way to report its current effect back, so Nibble shows the last one it applied."
+        rateControl.toolTip = "Higher rates poll more often — smoother tracking, slightly more battery. Writing this requires host mode; Nibble switches automatically."
+        replayCheck.toolTip = "Installs a one-shot launchd agent that runs `nibble apply` at login. It exits immediately after — nothing stays resident."
         for note in [rateNote, rgbNote] {
             note.font = .systemFont(ofSize: 11)
             note.textColor = .tertiaryLabelColor
@@ -53,6 +56,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         dpiControl.segmentDistribution = .fillEqually
         // 欄位只需容納 5 位數；全寬的輸入框會讓人以為要填長字串
         dpiCustom.placeholderString = "50–25600"
+        dpiCustom.toolTip = "Any value the sensor accepts. A DPI set with the mouse's own buttons shows up here when it isn't one of the presets."
         dpiCustom.target = self
         dpiCustom.action = #selector(dpiCustomCommitted)
         dpiCustom.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)

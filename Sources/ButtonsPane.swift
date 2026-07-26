@@ -21,8 +21,9 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
     // 右側編輯面板
     private let editorTitle = NSTextField(labelWithString: "No button selected")
-    private let typeControl = NSSegmentedControl(labels: ["Keystroke", "System", "Disable", "Default"],
+    private let typeControl = NSSegmentedControl(labels: ["Keystroke", "Macro", "System", "Disable", "Default"],
                                                  trackingMode: .selectOne, target: nil, action: nil)
+    private let macroField = NSTextField(string: "")
     private let recorder = KeyRecorderView(frame: .zero)
     private let systemPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let appField = NSTextField(string: "")
@@ -78,7 +79,10 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         hintLabel.lineBreakMode = .byTruncatingTail
         hintLabel.usesSingleLineMode = true
         hintLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        hintLabel.stringValue = "Changes apply instantly · G1/G2 locked"
+        hintLabel.stringValue = "Changes apply instantly"
+        hintLabel.toolTip = "Saved to ~/.config/nibble.json. The menu bar app watches that file and reloads the engine, so edits take effect without restarting anything."
+        learnButton.toolTip = "Press a physical mouse button and its row is selected. Wheel scrolling isn't a button; the wheel click and tilts are."
+        table.toolTip = "Right-click a row to clear its mapping. G1/G2 (left/right click) can't be remapped so the mouse can never lock you out."
         hintLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let editor = makeEditor()
@@ -116,14 +120,23 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         typeControl.segmentDistribution = .fillEqually
 
         recorder.onChange = { [weak self] _ in self?.applyEditor() }
+        recorder.toolTip = "Click here, then press the combination you want. Esc clears it."
+        typeControl.toolTip = "Keystroke sends one combination · Macro plays a sequence · System runs a built-in action, app or deeplink · Disable makes the button inert · Default hands it back to the mouse"
         recorder.translatesAutoresizingMaskIntoConstraints = false
         recorder.heightAnchor.constraint(equalToConstant: 30).isActive = true
+
+        macroField.placeholderString = "cmd+c, 150ms, cmd+v"
+        macroField.target = self
+        macroField.action = #selector(applyEditor)
+        macroField.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        macroField.toolTip = "Comma-separated steps. Each step is a key combination or a delay (150ms, 1.5s). Max 64 steps, 30s total."
 
         systemPopup.addItems(withTitles: SystemAction.allCases.map(\.rawValue))
         systemPopup.target = self
         systemPopup.action = #selector(applyEditor)
 
-        appField.placeholderString = "or an app name / deeplink, e.g. Safari or raycast://…"
+        appField.placeholderString = "app name or deeplink"
+        appField.toolTip = "An app name (Safari) launches it. Anything containing :// is opened as a deeplink — raycast://extensions/…, obsidian://…, shortcuts://…"
         appField.target = self
         appField.action = #selector(appFieldCommitted)
         appField.font = .systemFont(ofSize: 12)
@@ -134,13 +147,13 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         editorNote.maximumNumberOfLines = 3
         editorNote.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        editorControls = [typeControl, recorder, systemPopup, appField]
+        editorControls = [typeControl, recorder, macroField, systemPopup, appField]
 
-        let stack = NSStackView(views: [editorTitle, typeControl, recorder, systemPopup, appField, editorNote])
+        let stack = NSStackView(views: [editorTitle, typeControl, recorder, macroField, systemPopup, appField, editorNote])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
-        for v in [typeControl, recorder, systemPopup, appField] {
+        for v in [typeControl, recorder, macroField, systemPopup, appField] {
             v.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
         editorNote.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -194,7 +207,12 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         if tableColumn?.identifier.rawValue == "col-btn" {
             text = (highlighted == row ? "▶ " : "") + r.name
         } else if let a = r.action {
-            text = a.type == "keys" ? "⌨ \(a.keys ?? "")" : a.type == "system" ? "⚙ \(a.action ?? "")" : "🚫 disabled"
+            switch a.type {
+            case "keys": text = "⌨ \(a.keys ?? "")"
+            case "macro": text = "⏩ \(a.keys ?? "")"
+            case "system": text = "⚙ \(a.action ?? "")"
+            default: text = "🚫 disabled"
+            }
         } else {
             text = r.remappable ? "—" : "(system)"
         }
@@ -247,15 +265,18 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         case "keys":
             typeControl.selectedSegment = 0
             recorder.combo = r.action?.keys
-        case "system":
+        case "macro":
             typeControl.selectedSegment = 1
+            macroField.stringValue = r.action?.keys ?? ""
+        case "system":
+            typeControl.selectedSegment = 2
             let a = r.action?.action ?? ""
             if a.hasPrefix("app:") || a.hasPrefix("url:") { appField.stringValue = String(a.dropFirst(4)) }
             else { systemPopup.selectItem(withTitle: a) }
         case "disable":
-            typeControl.selectedSegment = 2
-        default:
             typeControl.selectedSegment = 3
+        default:
+            typeControl.selectedSegment = 4
             recorder.combo = nil
         }
         syncEditorVisibility()
@@ -264,12 +285,14 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     private func syncEditorVisibility() {
         let idx = typeControl.selectedSegment
         recorder.isHidden = idx != 0
-        systemPopup.isHidden = idx != 1
-        appField.isHidden = idx != 1
+        macroField.isHidden = idx != 1
+        systemPopup.isHidden = idx != 2
+        appField.isHidden = idx != 2
         switch idx {
         case 0: editorNote.stringValue = "Click the field and press the combination. Esc clears it."
-        case 1: editorNote.stringValue = "Pick a system action, or type an app name / deeplink to open."
-        case 2: editorNote.stringValue = "The button will do nothing at all."
+        case 1: editorNote.stringValue = "Steps separated by commas — key combos and delays like 150ms."
+        case 2: editorNote.stringValue = "Pick a system action, or type an app name / deeplink to open."
+        case 3: editorNote.stringValue = "The button will do nothing at all."
         default: editorNote.stringValue = "The mouse handles this button itself."
         }
     }
@@ -293,11 +316,19 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             guard let combo = recorder.combo, parseCombo(combo) != nil else { return }   // 還沒錄到就先不寫
             action = ButtonAction(type: "keys", keys: combo, action: nil)
         case 1:
+            let seq = macroField.stringValue.trimmingCharacters(in: .whitespaces)
+            guard !seq.isEmpty else { return }
+            guard parseMacro(seq) != nil else {
+                onStatus?("⚠️ Can't read that macro — steps are key combos or delays (150ms), max 64 steps / 30s")
+                return
+            }
+            action = ButtonAction(type: "macro", keys: seq, action: nil)
+        case 2:
             let entry = appField.stringValue.trimmingCharacters(in: .whitespaces)
             let custom = entry.contains("://") ? "url:\(entry)" : "app:\(entry)"
             action = ButtonAction(type: "system", keys: nil,
                                   action: entry.isEmpty ? systemPopup.titleOfSelectedItem : custom)
-        case 2:
+        case 3:
             action = ButtonAction(type: "disable", keys: nil, action: nil)
         default:
             action = nil
@@ -325,7 +356,13 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             rows[rowIndex].action = action
             table.reloadData()
             table.selectRowIndexes(IndexSet(integer: rowIndex), byExtendingSelection: false)
-            let desc = action.map { $0.type == "keys" ? ($0.keys ?? "") : $0.type == "system" ? ($0.action ?? "") : "disabled" } ?? "default"
+            let desc = action.map {
+                switch $0.type {
+                case "keys", "macro": return $0.keys ?? ""
+                case "system": return $0.action ?? ""
+                default: return "disabled"
+                }
+            } ?? "default"
             onStatus?("\(key) → \(desc) · applied")
         } catch {
             onStatus?("❌ save failed: \(error)")

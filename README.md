@@ -71,8 +71,9 @@ Exit codes: `0` ok · `1` no awake device or value not applied · `2` transport/
 ```json
 { "dpi": 1600, "reportRateHz": 1000, "rgb": "off",
   "buttonMaps": { "G502 LIGHTSPEED Wireless Gaming Mouse": {
-    "G7": { "type": "keys", "keys": "cmd+space" },
-    "G8": { "type": "system", "action": "mission-control" } } } }
+    "G7": { "type": "keys",   "keys": "cmd+space" },
+    "G8": { "type": "macro",  "keys": "cmd+c, 150ms, cmd+v" },
+    "G9": { "type": "system", "action": "url:raycast://extensions/mooxl/deepcast/index" } } } }
 ```
 
 | Key | Type | Values |
@@ -98,7 +99,9 @@ Mappings are stored per device name under `buttonMaps` and executed by the menu 
 - All writes are **runtime** (device RAM, persist flag = 0). A power cycle reverts the mouse to its onboard profile — `nibble replay install` re-applies your config at login.
 - Report-rate and RGB writes require **host mode**; commands switch the mode flag automatically. The flag also reverts on power cycle.
 - Onboard flash (HID++ feature `0x8100`) is **read-only by design**. `onboard backup` dumps every sector to `~/.config/nibble/backups/` as `.bin` + `.json` metadata — your escape hatch is restoring factory settings via G HUB on any machine.
-- Button remaps are hosted by `nibble menubar` (the opt-in resident mode). G-series path: the spy-layer remap zeroes the button's standard HID output and Nibble synthesizes your action from the event stream (`0x8110`). Quitting the menu bar restores factory behavior immediately; a power cycle does too. Actions: `keys` (e.g. `cmd+shift+4`), `system` (`mission-control`, `play-pause`, `next-track`, `prev-track`, `volume-up`, `volume-down`, `mute`, `app:Name`, `url:<deeplink>` — e.g. `url:raycast://extensions/mooxl/deepcast/index`), `disable`. G1/G2 (left/right click) are never remapped.
+- Button remaps are hosted by `nibble menubar` (the opt-in resident mode). G-series path: the spy-layer remap zeroes the button's standard HID output and Nibble synthesizes your action from the event stream (`0x8110`). Quitting the menu bar restores factory behavior immediately; a power cycle does too. Actions: `keys` (e.g. `cmd+shift+4`), `macro` (a comma-separated sequence: `cmd+c, 150ms, cmd+v` — steps are key combinations or delays in `ms`/`s`, capped at 64 steps and 30s total), `system` (`mission-control`, `play-pause`, `next-track`, `prev-track`, `volume-up`, `volume-down`, `mute`, `app:Name`, `url:<deeplink>` — e.g. `url:raycast://extensions/mooxl/deepcast/index`), `disable`.
+
+Macros play on their own queue, so a long sequence never blocks the button that started it. Competitive games often forbid input automation — check before binding one. G1/G2 (left/right click) are never remapped.
 - Zero resident processes unless you opt into `menubar`.
 
 ## Troubleshooting

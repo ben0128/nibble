@@ -822,7 +822,7 @@ func cmdRemap() -> Int32 {
             return 1
         }
         print("→ got \(bName)")
-        print("Action type? [k]eystroke [s]ystem action [d]efault [x]disable: ", terminator: "")
+        print("Action type? [k]eystroke [m]acro [s]ystem action [d]efault [x]disable: ", terminator: "")
         guard let choice = readLine()?.lowercased().first else { return 1 }
         var action: ButtonAction?
         switch choice {
@@ -830,8 +830,15 @@ func cmdRemap() -> Int32 {
             print("Key combination (e.g. cmd+shift+4 / ctrl+left / f13): ", terminator: "")
             guard let combo = readLine(), parseCombo(combo) != nil else { print("could not parse that combination"); return 64 }
             action = ButtonAction(type: "keys", keys: combo, action: nil)
+        case "m":
+            print("Steps, comma separated (e.g. cmd+c, 150ms, cmd+v): ", terminator: "")
+            guard let seq = readLine(), parseMacro(seq) != nil else {
+                print("could not read that macro — steps are key combos or delays (150ms), max 64 steps / 30s")
+                return 64
+            }
+            action = ButtonAction(type: "macro", keys: seq, action: nil)
         case "s":
-            print("Options: \(SystemAction.allCases.map(\.rawValue).joined(separator: " / ")) / app:Name")
+            print("Options: \(SystemAction.allCases.map(\.rawValue).joined(separator: " / ")) / app:Name / url:deeplink")
             print("Enter: ", terminator: "")
             guard let s = readLine(), !s.isEmpty else { return 1 }
             action = ButtonAction(type: "system", keys: nil, action: s)
@@ -849,7 +856,14 @@ func cmdRemap() -> Int32 {
         maps[devName] = devMap.isEmpty ? nil : devMap
         cfg.buttonMaps = maps
         try saveConfig(cfg)
-        let desc = action.map { $0.type == "keys" ? "keys: \($0.keys ?? "")" : $0.type == "disable" ? "disabled" : "system: \($0.action ?? "")" } ?? "restore default"
+        let desc = action.map {
+            switch $0.type {
+            case "keys": return "keys: \($0.keys ?? "")"
+            case "macro": return "macro: \($0.keys ?? "")"
+            case "disable": return "disabled"
+            default: return "system: \($0.action ?? "")"
+            }
+        } ?? "restore default"
         print("✓ \(bName) → \(desc) (saved)")
         print("  Takes effect in the menu bar app, which reloads this file automatically")
         if action != nil, action?.type != "disable", !axTrusted() {
