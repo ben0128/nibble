@@ -1,22 +1,34 @@
-// ButtonsPane.swift — M5c 改鍵 UI（設定面板的 Buttons 分頁）
-// 不畫滑鼠：按鍵清單由裝置自我列舉（0x8110 G 系 / 0x1b04 MX 系），
-// 定位靠 press-to-identify——按實體鍵，對應列高亮。這同時是位序驗證器：
-// 按 G7 若亮在別列，代表 bitmask 假設要修（改 ButtonsPane.bitToRow 一處即可）。
+// ButtonsPane.swift — 改鍵 UI（設定面板的 Buttons 分頁）
+// 不畫滑鼠：按鍵清單由裝置自我列舉（0x8110 G 系 / 0x1b04 MX 系）。
+// 版面 = 左清單 ／ 右即時編輯面板：選一列右邊就能改，改完立刻寫檔，不開彈窗、不用按儲存。
+// 定位靠 press-to-identify——按實體鍵，對應列自動選取，接著右邊直接錄快捷鍵。
 import AppKit
 
 struct ButtonRow {
     let index: Int          // 0-based 鍵序（G(index+1)）
     let name: String
     let remappable: Bool
-    var cid: UInt16? = nil        // MX 路徑用（G 系為 nil）
+    var cid: UInt16? = nil  // MX 路徑用（G 系為 nil）
     var action: ButtonAction?
 }
 
 final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     var onStatus: ((String) -> Void)?
+
     private let table = NSTableView()
     private let hintLabel = NSTextField(labelWithString: "")
     private let learnButton = NSButton(title: "Press to identify", target: nil, action: nil)
+
+    // 右側編輯面板
+    private let editorTitle = NSTextField(labelWithString: "No button selected")
+    private let typeControl = NSSegmentedControl(labels: ["Keystroke", "System", "Disable", "Default"],
+                                                 trackingMode: .selectOne, target: nil, action: nil)
+    private let recorder = KeyRecorderView(frame: .zero)
+    private let systemPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let appField = NSTextField(string: "")
+    private let editorNote = NSTextField(labelWithString: "")
+    private var editorControls: [NSView] = []
+
     private var rows: [ButtonRow] = []
     private var deviceName = "unknown"
     private var learning = false
@@ -26,31 +38,28 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     private var spyIdx: UInt8 = 0
     private var prevMask: UInt16 = 0
     private var divertedForLearn: [UInt16] = []
+    private var suppressEditorApply = false   // 載入既有設定時不要反過來觸發寫檔
 
     /// spy 事件 bitmask 的 bit → 列序。位序若被實測推翻，只改這裡。
     static func bitToRow(_ bit: Int) -> Int { bit }
 
+    // MARK: 版面
+
     func makeView() -> NSView {
-        table.addTableColumn(withTitle("button", "col-btn", 90))
-        table.addTableColumn(withTitle("action", "col-act", 200))
-        table.addTableColumn(withTitle("", "col-edit", 90))
+        table.addTableColumn(withTitle("button", "col-btn", 78))
+        table.addTableColumn(withTitle("action", "col-act", 150))
         table.delegate = self
         table.dataSource = self
-        table.rowHeight = 24
+        table.rowHeight = 22
         table.usesAlternatingRowBackgroundColors = true
-        table.doubleAction = #selector(editSelected)
+        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         table.target = self
 
         let ctx = NSMenu()
-        let editItem = NSMenuItem(title: "Edit…", action: #selector(editSelected), keyEquivalent: "")
-        editItem.target = self
         let clearItem = NSMenuItem(title: "Clear mapping", action: #selector(clearSelected), keyEquivalent: "")
         clearItem.target = self
-        ctx.addItem(editItem)
         ctx.addItem(clearItem)
         table.menu = ctx
-
-        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
 
         let scroll = NSScrollView()
         scroll.documentView = table
@@ -58,42 +67,84 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         scroll.borderType = .bezelBorder
         scroll.autohidesScrollers = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
-        // 只給最小高度，其餘交給約束拉伸——寫死尺寸就是先前分頁溢出的原因
-        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
-        scroll.setContentHuggingPriority(.defaultLow, for: .vertical)
+        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 190).isActive = true
 
         learnButton.target = self
         learnButton.action = #selector(toggleLearn)
-        let editBtn = NSButton(title: "Edit selected…", target: self, action: #selector(editSelected))
-        let row = NSStackView(views: [learnButton, editBtn])
-        row.spacing = 8
-        row.translatesAutoresizingMaskIntoConstraints = false
+        learnButton.translatesAutoresizingMaskIntoConstraints = false
 
         hintLabel.font = .systemFont(ofSize: 11)
         hintLabel.textColor = .secondaryLabelColor
         hintLabel.lineBreakMode = .byTruncatingTail
         hintLabel.usesSingleLineMode = true
         hintLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        hintLabel.stringValue = "Remaps run in the menu bar app · right-click a row to clear · G1/G2 locked"
+        hintLabel.stringValue = "Changes apply instantly · G1/G2 locked"
         hintLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        let editor = makeEditor()
+        editor.translatesAutoresizingMaskIntoConstraints = false
+
         let container = NSView()
-        for v in [scroll, row, hintLabel] as [NSView] { container.addSubview(v) }
+        for v in [scroll, learnButton, hintLabel, editor] { container.addSubview(v) }
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
             scroll.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
-            scroll.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
+            scroll.widthAnchor.constraint(equalToConstant: 236),
 
-            row.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 10),
-            row.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
-            row.trailingAnchor.constraint(lessThanOrEqualTo: scroll.trailingAnchor),
+            learnButton.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 8),
+            learnButton.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
 
-            hintLabel.topAnchor.constraint(equalTo: row.bottomAnchor, constant: 8),
+            hintLabel.topAnchor.constraint(equalTo: learnButton.bottomAnchor, constant: 8),
             hintLabel.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
-            hintLabel.trailingAnchor.constraint(equalTo: scroll.trailingAnchor),
+            hintLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
             hintLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
+
+            editor.topAnchor.constraint(equalTo: scroll.topAnchor),
+            editor.leadingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: 16),
+            editor.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
+            editor.bottomAnchor.constraint(lessThanOrEqualTo: learnButton.bottomAnchor),
         ])
+        updateEditor()
         return container
+    }
+
+    private func makeEditor() -> NSView {
+        editorTitle.font = .boldSystemFont(ofSize: 13)
+
+        typeControl.target = self
+        typeControl.action = #selector(typeChanged)
+        typeControl.segmentDistribution = .fillEqually
+
+        recorder.onChange = { [weak self] _ in self?.applyEditor() }
+        recorder.translatesAutoresizingMaskIntoConstraints = false
+        recorder.heightAnchor.constraint(equalToConstant: 30).isActive = true
+
+        systemPopup.addItems(withTitles: SystemAction.allCases.map(\.rawValue))
+        systemPopup.target = self
+        systemPopup.action = #selector(applyEditor)
+
+        appField.placeholderString = "or launch an app, e.g. Safari"
+        appField.target = self
+        appField.action = #selector(appFieldCommitted)
+        appField.font = .systemFont(ofSize: 12)
+
+        editorNote.font = .systemFont(ofSize: 11)
+        editorNote.textColor = .secondaryLabelColor
+        editorNote.lineBreakMode = .byWordWrapping
+        editorNote.maximumNumberOfLines = 3
+        editorNote.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        editorControls = [typeControl, recorder, systemPopup, appField]
+
+        let stack = NSStackView(views: [editorTitle, typeControl, recorder, systemPopup, appField, editorNote])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        for v in [typeControl, recorder, systemPopup, appField] {
+            v.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        }
+        editorNote.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        return stack
     }
 
     private func withTitle(_ title: String, _ id: String, _ width: CGFloat) -> NSTableColumn {
@@ -122,14 +173,15 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
                     let nm = HIDPP.cidNames[c.cid] ?? String(format: "CID 0x%04X", c.cid)
                     out.append(ButtonRow(index: i, name: nm, remappable: c.divertable, cid: c.cid, action: saved[nm]))
                 }
-
             }
             rows = out
             table.reloadData()
-            onStatus?("\(deviceName) · \(rows.count) buttons (enumerated from device)")
+            updateEditor()
+            onStatus?("\(deviceName) · \(rows.count) buttons")
         } catch {
             rows = []
             table.reloadData()
+            updateEditor()
             onStatus?("❌ \(error)")
         }
     }
@@ -139,17 +191,12 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let r = rows[row]
         let text: String
-        switch tableColumn?.identifier.rawValue {
-        case "col-btn":
+        if tableColumn?.identifier.rawValue == "col-btn" {
             text = (highlighted == row ? "▶ " : "") + r.name
-        case "col-act":
-            if let a = r.action {
-                text = a.type == "keys" ? "⌨ \(a.keys ?? "")" : a.type == "system" ? "⚙ \(a.action ?? "")" : "🚫 disabled"
-            } else {
-                text = r.remappable ? "(default)" : "(system)"
-            }
-        default:
-            text = r.remappable ? "remappable" : "—"
+        } else if let a = r.action {
+            text = a.type == "keys" ? "⌨ \(a.keys ?? "")" : a.type == "system" ? "⚙ \(a.action ?? "")" : "🚫 disabled"
+        } else {
+            text = r.remappable ? "—" : "(system)"
         }
         let label = NSTextField(labelWithString: text)
         label.font = highlighted == row ? .boldSystemFont(ofSize: 12) : .systemFont(ofSize: 12)
@@ -158,11 +205,135 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         return label
     }
 
-    // MARK: press-to-identify（同時是位序驗證器）
+    func tableViewSelectionDidChange(_ notification: Notification) { updateEditor() }
 
-    @objc private func toggleLearn() {
-        learning ? stopLearn() : startLearn()
+    // MARK: 右側編輯面板（即時套用）
+
+    private var selectedRow: Int? {
+        let s = table.selectedRow
+        return (s >= 0 && s < rows.count) ? s : nil
     }
+
+    private func setEditorEnabled(_ on: Bool) {
+        for v in editorControls { (v as? NSControl)?.isEnabled = on }
+    }
+
+    private func updateEditor() {
+        suppressEditorApply = true
+        defer { suppressEditorApply = false }
+
+        guard let i = selectedRow else {
+            editorTitle.stringValue = "No button selected"
+            editorNote.stringValue = "Select a row, or use Press to identify and press the physical button."
+            setEditorEnabled(false)
+            recorder.isHidden = true
+            systemPopup.isHidden = true
+            appField.isHidden = true
+            return
+        }
+        let r = rows[i]
+        editorTitle.stringValue = r.name
+        guard r.remappable else {
+            editorNote.stringValue = "Primary buttons stay untouched so the mouse can never lock you out."
+            setEditorEnabled(false)
+            recorder.isHidden = true
+            systemPopup.isHidden = true
+            appField.isHidden = true
+            return
+        }
+        setEditorEnabled(true)
+
+        switch r.action?.type {
+        case "keys":
+            typeControl.selectedSegment = 0
+            recorder.combo = r.action?.keys
+        case "system":
+            typeControl.selectedSegment = 1
+            let a = r.action?.action ?? ""
+            if a.hasPrefix("app:") { appField.stringValue = String(a.dropFirst(4)) }
+            else { systemPopup.selectItem(withTitle: a) }
+        case "disable":
+            typeControl.selectedSegment = 2
+        default:
+            typeControl.selectedSegment = 3
+            recorder.combo = nil
+        }
+        syncEditorVisibility()
+    }
+
+    private func syncEditorVisibility() {
+        let idx = typeControl.selectedSegment
+        recorder.isHidden = idx != 0
+        systemPopup.isHidden = idx != 1
+        appField.isHidden = idx != 1
+        switch idx {
+        case 0: editorNote.stringValue = "Click the field and press the combination. Esc clears it."
+        case 1: editorNote.stringValue = "Pick a system action, or type an app name to launch it."
+        case 2: editorNote.stringValue = "The button will do nothing at all."
+        default: editorNote.stringValue = "The mouse handles this button itself."
+        }
+    }
+
+    @objc private func typeChanged() {
+        syncEditorVisibility()
+        if typeControl.selectedSegment == 0 { window?.makeFirstResponder(recorder) }
+        applyEditor()
+    }
+
+    private var window: NSWindow? { table.window }
+
+    @objc private func appFieldCommitted() { applyEditor() }
+
+    /// 每次改動立刻寫檔——選單列監看設定檔，會自動重載引擎
+    @objc private func applyEditor() {
+        guard !suppressEditorApply, let i = selectedRow, rows[i].remappable else { return }
+        var action: ButtonAction?
+        switch typeControl.selectedSegment {
+        case 0:
+            guard let combo = recorder.combo, parseCombo(combo) != nil else { return }   // 還沒錄到就先不寫
+            action = ButtonAction(type: "keys", keys: combo, action: nil)
+        case 1:
+            let app = appField.stringValue.trimmingCharacters(in: .whitespaces)
+            action = ButtonAction(type: "system", keys: nil,
+                                  action: app.isEmpty ? systemPopup.titleOfSelectedItem : "app:\(app)")
+        case 2:
+            action = ButtonAction(type: "disable", keys: nil, action: nil)
+        default:
+            action = nil
+        }
+        save(action, for: i)
+    }
+
+    @objc private func clearSelected() {
+        let sel = table.clickedRow >= 0 ? table.clickedRow : table.selectedRow
+        guard sel >= 0, sel < rows.count, rows[sel].action != nil else { return }
+        save(nil, for: sel)
+        updateEditor()
+    }
+
+    private func save(_ action: ButtonAction?, for rowIndex: Int) {
+        var cfg = loadConfig() ?? BMConfig()
+        var maps = cfg.buttonMaps ?? [:]
+        var devMap = maps[deviceName] ?? [:]
+        let key = rows[rowIndex].name.components(separatedBy: " ").first ?? rows[rowIndex].name
+        if let action { devMap[key] = action } else { devMap.removeValue(forKey: key) }
+        maps[deviceName] = devMap.isEmpty ? nil : devMap
+        cfg.buttonMaps = maps
+        do {
+            try saveConfig(cfg)
+            rows[rowIndex].action = action
+            table.reloadData()
+            table.selectRowIndexes(IndexSet(integer: rowIndex), byExtendingSelection: false)
+            let desc = action.map { $0.type == "keys" ? ($0.keys ?? "") : $0.type == "system" ? ($0.action ?? "") : "disabled" } ?? "default"
+            onStatus?("\(key) → \(desc) · applied")
+        } catch {
+            onStatus?("❌ save failed: \(error)")
+        }
+    }
+
+    // MARK: press-to-identify
+
+    @objc private func toggleLearn() { learning ? stopLearn() : startLearn() }
 
     private func startLearn() {
         do {
@@ -180,7 +351,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
                 divertedForLearn = (try dev.controls()).filter(\.divertable).map(\.cid)
                 for cid in divertedForLearn { try? dev.setDivert(cid: cid, on: true) }
                 tr.onReport = { [weak self] p in self?.handleDivertedEvent(p) }
-                onStatus?("Press any mouse button — its row will highlight (buttons are inert while identifying)")
+                onStatus?("Press a mouse button (buttons are inert while identifying)")
             } else {
                 onStatus?("This device does not support identify")
                 return
@@ -208,25 +379,16 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         onStatus?("Identify stopped")
     }
 
-    /// MX 路徑事件：payload 是目前按住的 CID 清單
-    private func handleDivertedEvent(_ p: [UInt8]) {
-        guard p.count >= 5, p[1] == spyIdx, p[2] == 0x00 else { return }
-        var i = 3
-        while i + 1 < p.count && i < 11 {
-            let cid = UInt16(p[i]) << 8 | UInt16(p[i + 1])
-            if cid != 0, let row = rows.firstIndex(where: { $0.cid == cid }) {
-                highlighted = row
-                table.reloadData()
-                table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-                table.scrollRowToVisible(row)
-                onStatus?("Detected \(rows[row].name)")
-                return
-            }
-            i += 2
-        }
-    }
-
     func teardown() { if learning { stopLearn() } }
+
+    private func select(_ row: Int, note: String) {
+        highlighted = row
+        table.reloadData()
+        table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        table.scrollRowToVisible(row)
+        updateEditor()
+        onStatus?(note)
+    }
 
     private func handleSpy(_ p: [UInt8]) {
         guard p.count >= 5, p[1] == spyIdx, p[2] == 0x00 else { return }
@@ -236,133 +398,23 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         guard let bit = (0..<16).first(where: { newly & (1 << $0) != 0 }) else { return }
         let row = Self.bitToRow(bit)
         guard row < rows.count else {
-            onStatus?("Got bit \(bit) (mask \(String(format: "%04X", mask))) — beyond the button count, bit order may be wrong")
+            onStatus?("Got bit \(bit) — beyond the button count")
             return
         }
-        highlighted = row
-        table.reloadData()
-        table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-        table.scrollRowToVisible(row)
-        onStatus?("Detected \(rows[row].name) · bit \(bit)")
+        select(row, note: "Detected \(rows[row].name) · bit \(bit)")
     }
 
-    // MARK: 改鍵彈窗
-
-    @objc private func clearSelected() {
-        let sel = table.clickedRow >= 0 ? table.clickedRow : table.selectedRow
-        guard sel >= 0, sel < rows.count else { return }
-        guard rows[sel].action != nil else {
-            onStatus?("\(rows[sel].name) has no mapping")
-            return
-        }
-        save(nil, for: sel)
-    }
-
-    @objc private func editSelected() {
-        let sel = table.selectedRow
-        guard sel >= 0, sel < rows.count else { onStatus?("Select a row, or use press-to-identify"); return }
-        let r = rows[sel]
-        guard r.remappable else { onStatus?("\(r.name) is locked (system button)"); return }
-        presentEditor(for: sel)
-    }
-
-    private func presentEditor(for rowIndex: Int) {
-        let r = rows[rowIndex]
-        let alert = NSAlert()
-        alert.messageText = "Remap \(r.name)"
-        alert.informativeText = "Applies as soon as you save — the menu bar reloads automatically."
-
-        let typePopup = NSPopUpButton(frame: NSRect(x: 0, y: 64, width: 320, height: 26))
-        typePopup.addItems(withTitles: ["Keystroke", "System action",
-                                        "Disable this button", "Restore default"])
-        let recorder = KeyRecorderView(frame: NSRect(x: 0, y: 30, width: 320, height: 26))
-        let systemPopup = NSPopUpButton(frame: NSRect(x: 0, y: 30, width: 320, height: 26))
-        systemPopup.addItems(withTitles: SystemAction.allCases.map(\.rawValue))
-        let hint = NSTextField(labelWithString: "")
-        hint.frame = NSRect(x: 0, y: 4, width: 320, height: 18)
-        hint.font = .systemFont(ofSize: 11)
-        hint.textColor = .secondaryLabelColor
-
-        switch r.action?.type {
-        case "keys": typePopup.selectItem(at: 0); recorder.combo = r.action?.keys
-        case "system":
-            typePopup.selectItem(at: 1)
-            if let a = r.action?.action { systemPopup.selectItem(withTitle: a) }
-        case "disable": typePopup.selectItem(at: 2)
-        default: typePopup.selectItem(at: 0)
-        }
-
-        // 依類型只顯示相關控制項——不要讓使用者同時看到不相干的欄位
-        func syncVisibility() {
-            let idx = typePopup.indexOfSelectedItem
-            recorder.isHidden = idx != 0
-            systemPopup.isHidden = idx != 1
-            switch idx {
-            case 0: hint.stringValue = "Esc clears the recording"
-            case 1: hint.stringValue = "app:Name also works, e.g. app:Safari"
-            case 2: hint.stringValue = "The button stops doing anything"
-            default: hint.stringValue = "Hands the button back to the mouse"
-            }
-        }
-        let observer = TypeChangeObserver { syncVisibility() }
-        typePopup.target = observer
-        typePopup.action = #selector(TypeChangeObserver.changed)
-        syncVisibility()
-
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 94))
-        container.addSubview(typePopup)
-        container.addSubview(recorder)
-        container.addSubview(systemPopup)
-        container.addSubview(hint)
-        alert.accessoryView = container
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = recorder
-
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        _ = observer   // 讓 observer 活到 modal 結束
-
-        var action: ButtonAction?
-        switch typePopup.indexOfSelectedItem {
-        case 0:
-            guard let combo = recorder.combo, parseCombo(combo) != nil else {
-                onStatus?("⚠️ No key combination recorded")
+    /// MX 路徑事件：payload 是目前按住的 CID 清單
+    private func handleDivertedEvent(_ p: [UInt8]) {
+        guard p.count >= 5, p[1] == spyIdx, p[2] == 0x00 else { return }
+        var i = 3
+        while i + 1 < p.count && i < 11 {
+            let cid = UInt16(p[i]) << 8 | UInt16(p[i + 1])
+            if cid != 0, let row = rows.firstIndex(where: { $0.cid == cid }) {
+                select(row, note: "Detected \(rows[row].name)")
                 return
             }
-            action = ButtonAction(type: "keys", keys: combo, action: nil)
-        case 1:
-            action = ButtonAction(type: "system", keys: nil, action: systemPopup.titleOfSelectedItem)
-        case 2:
-            action = ButtonAction(type: "disable", keys: nil, action: nil)
-        default:
-            action = nil
-        }
-        save(action, for: rowIndex)
-    }
-
-    /// NSPopUpButton 的 target 必須是 NSObject；用小物件轉接 closure
-    private final class TypeChangeObserver: NSObject {
-        let handler: () -> Void
-        init(_ handler: @escaping () -> Void) { self.handler = handler }
-        @objc func changed() { handler() }
-    }
-
-    private func save(_ action: ButtonAction?, for rowIndex: Int) {
-        var cfg = loadConfig() ?? BMConfig()
-        var maps = cfg.buttonMaps ?? [:]
-        var devMap = maps[deviceName] ?? [:]
-        let key = rows[rowIndex].name.components(separatedBy: CharacterSet(charactersIn: "（ ")).first ?? rows[rowIndex].name
-        if let action { devMap[key] = action } else { devMap.removeValue(forKey: key) }
-        maps[deviceName] = devMap.isEmpty ? nil : devMap
-        cfg.buttonMaps = maps
-        do {
-            try saveConfig(cfg)
-            rows[rowIndex].action = action
-            table.reloadData()
-            let desc = action.map { $0.type == "keys" ? ($0.keys ?? "") : $0.type == "system" ? ($0.action ?? "") : "disabled" } ?? "default"
-            onStatus?("✓ \(key) → \(desc) · saved, menu bar reloads automatically")
-        } catch {
-            onStatus?("❌ save failed: \(error)")
+            i += 2
         }
     }
 }
