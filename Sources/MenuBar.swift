@@ -149,7 +149,6 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(makeItem("Save current settings", #selector(saveAction)))
         menu.addItem(makeItem("Refresh now", #selector(refreshAction), key: "r"))
         menu.addItem(.separator())
-        menu.addItem(makeItem("About Nibble \(NIBBLE_VERSION)", #selector(aboutAction)))
         menu.addItem(makeItem("Quit (mouse keeps working)", #selector(quitAction), key: "q"))
         statusItem.menu = menu
 
@@ -433,23 +432,6 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openInputMonitoring() {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
-    }
-
-    @objc private func aboutAction() {
-        let alert = NSAlert()
-        alert.messageText = "Nibble \(NIBBLE_VERSION)"
-        alert.informativeText = """
-            Lightweight Logitech mouse control for macOS.
-            All writes are runtime — a power cycle restores the mouse.
-            Quitting Nibble never breaks your mouse.
-
-            github.com/ben0128/nibble · MIT
-            """
-        alert.addButton(withTitle: "GitHub")
-        alert.addButton(withTitle: "Close")
-        if alert.runModal() == .alertFirstButtonReturn {
-            NSWorkspace.shared.open(URL(string: "https://github.com/ben0128/nibble")!)
-        }
     }
 
     private func act(_ body: (HIDPPDevice) throws -> Void) {

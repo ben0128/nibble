@@ -27,6 +27,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private let rgbNote = NSTextField(labelWithString: "Lighting can't be read back from the mouse")
     private let replayCheck = NSButton(checkboxWithTitle: "Re-apply my settings at login", target: nil, action: nil)
     private let statusLabel = NSTextField(labelWithString: " ")
+    private let aboutButton = NSButton(title: "Nibble \(NIBBLE_VERSION)", target: nil, action: nil)
     private var lastIndex: UInt8 = 1
     private var lastRGB: String? = lastKnownRGB()
     private let buttonsPane = ButtonsPane()
@@ -108,9 +109,20 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         tabs.addTabViewItem(buttons)
         buttonsPane.onStatus = { [weak self] msg in self?.statusLabel.stringValue = msg }
 
+        // 版本資訊從選單列搬來這裡：選單留給日常操作，關於資訊屬於設定視窗
+        aboutButton.bezelStyle = .inline
+        aboutButton.isBordered = false
+        aboutButton.target = self
+        aboutButton.action = #selector(openRepo)
+        aboutButton.contentTintColor = .secondaryLabelColor
+        aboutButton.font = .systemFont(ofSize: 11)
+        aboutButton.toolTip = "github.com/ben0128/nibble — MIT"
+        aboutButton.setContentHuggingPriority(.required, for: .horizontal)
+        aboutButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+
         // 全程 Auto Layout：NSTabView 用 frame 幫分頁排版，內容一旦帶固定約束就會打架、溢出邊界
         let root = NSView()
-        for v in [deviceLabel, batteryLabel, linkLabel, tabs, statusLabel] as [NSView] {
+        for v in [deviceLabel, batteryLabel, linkLabel, tabs, statusLabel, aboutButton] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
@@ -142,8 +154,11 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
 
             statusLabel.topAnchor.constraint(equalTo: tabs.bottomAnchor, constant: 8),
             statusLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
-            statusLabel.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
+            statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: aboutButton.leadingAnchor, constant: -12),
             statusLabel.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -12),
+
+            aboutButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
+            aboutButton.centerYAnchor.constraint(equalTo: statusLabel.centerYAnchor),
         ])
 
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 660, height: 470),
@@ -188,6 +203,10 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             : content.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -12))
         NSLayoutConstraint.activate(cs)
         return container
+    }
+
+    @objc private func openRepo() {
+        NSWorkspace.shared.open(URL(string: "https://github.com/ben0128/nibble")!)
     }
 
     private func sectionLabel(_ text: String) -> NSTextField {
