@@ -1,0 +1,17 @@
+# Windows 版的 workspace（設計見 docs/superpowers/specs/2026-07-27-windows-port-design.md）。
+# nibble-core 零 Win32 依賴——任何平台都能 cargo test，這是它存在的意義。
+[workspace]
+resolver = "2"
+members = ["crates/nibble-core"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/ben0128/nibble"
+
+[profile.release]
+opt-level = "z"   # 體積優先——這個專案的招牌
+lto = true
+strip = true
+panic = "abort"
+codegen-units = 1

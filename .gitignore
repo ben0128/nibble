@@ -4,3 +4,4 @@ nibble
 Nibble.app/
 .build/
 .nibble-tests
+windows/target/

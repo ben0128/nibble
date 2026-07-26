@@ -1,0 +1,13 @@
+[package]
+name = "nibble-core"
+version = "0.1.0"
+description = "HID++ 2.0 protocol core + config semantics for Nibble (platform-neutral)"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# serde 是唯一依賴。「零依賴」講的是使用者拿到的東西——單一 exe、無 runtime、
+# 無安裝器；建置期的 crate 會被靜態連結吃掉，不改變那個承諾。
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
