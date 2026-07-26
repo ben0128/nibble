@@ -92,8 +92,10 @@ public final class HIDPPDevice {
                      timeout: TimeInterval = 1.0) throws -> [UInt8] {
         let fnsw = (fn << 4) | swid
         let dev = index
+        // short report 的 params 上限 3 bytes，超過自動改用 long
+        let needLong = params.count > 3
         let resp = try transport.roundTrip(request: [dev, fi, fnsw] + params,
-                                           preferLong: false, timeout: timeout) { p in
+                                           preferLong: needLong, timeout: timeout) { p in
             guard p.count >= 5, p[0] == dev else { return false }
             if p[1] == fi && p[2] == fnsw { return true }                    // 正常回應
             if p[1] == 0x8F && p[2] == fi && p[3] == fnsw { return true }    // 1.0 式錯誤（接收器代答）
@@ -200,5 +202,128 @@ public final class HIDPPDevice {
             out.append(FeatureEntry(index: UInt8(i), id: UInt16(r[0]) << 8 | UInt16(r[1]), flags: r[2]))
         }
         return out
+    }
+
+    // MARK: 高階 API（M2 寫入組 — 全部 runtime 寫入，persist 一律 0，不碰 flash）
+
+    /// 寫 DPI 後回讀驗證，回傳裝置實際生效值
+    @discardableResult
+    public func setDPI(_ dpi: Int, sensor: UInt8 = 0) throws -> Int {
+        _ = try call(feature: 0x2201, function: 3,
+                     params: [sensor, UInt8((dpi >> 8) & 0xFF), UInt8(dpi & 0xFF)])
+        return try currentDPI()
+    }
+
+    /// 0x8060 fn0：支援的回報率（bitfield，bit n = 間隔 n+1 ms）
+    public func supportedReportRatesHz() throws -> [Int] {
+        let r = try call(feature: 0x8060, function: 0)
+        var out: [Int] = []
+        for bit in 0..<8 where r[0] & (1 << bit) != 0 { out.append(1000 / (bit + 1)) }
+        return out
+    }
+
+    @discardableResult
+    public func setReportRateHz(_ hz: Int) throws -> Int {
+        let ms = UInt8(max(1, min(8, 1000 / max(hz, 125))))
+        _ = try call(feature: 0x8060, function: 2, params: [ms])
+        return try reportRateHz()
+    }
+
+    // MARK: Onboard（0x8100）——安全路線：模式旗標 + 唯讀
+
+    public enum OnboardMode: UInt8, CustomStringConvertible {
+        case onboard = 1, host = 2
+        public var description: String { self == .onboard ? "onboard（板載 profile 主導）" : "host（軟體 runtime 主導）" }
+    }
+
+    public func onboardMode() throws -> OnboardMode {
+        let r = try call(feature: 0x8100, function: 2)
+        return OnboardMode(rawValue: r[0]) ?? .onboard
+    }
+
+    /// 模式旗標呼叫，非 sector 寫入；斷電即回復 onboard
+    public func setOnboardMode(_ m: OnboardMode) throws {
+        _ = try call(feature: 0x8100, function: 1, params: [m.rawValue])
+    }
+
+    public struct OnboardInfo {
+        public let memoryModel: UInt8, profileFormat: UInt8, macroFormat: UInt8
+        public let profileCount: Int, profileCountOOB: Int, buttonCount: Int
+        public let sectorCount: Int, sectorSize: Int
+    }
+
+    public func onboardInfo() throws -> OnboardInfo {
+        let r = try call(feature: 0x8100, function: 0)
+        return OnboardInfo(memoryModel: r[0], profileFormat: r[1], macroFormat: r[2],
+                           profileCount: Int(r[3]), profileCountOOB: Int(r[4]), buttonCount: Int(r[5]),
+                           sectorCount: Int(r[6]), sectorSize: Int(r[7]) << 8 | Int(r[8]))
+    }
+
+    /// 唯讀 memory read：一次 16 bytes（寫入功能凍結中，見計畫 §8）
+    public func onboardRead(sector: UInt16, offset: UInt16) throws -> [UInt8] {
+        try call(feature: 0x8100, function: 5,
+                 params: [UInt8(sector >> 8), UInt8(sector & 0xFF),
+                          UInt8(offset >> 8), UInt8(offset & 0xFF)])
+    }
+
+    // MARK: RGB（0x8070 ColorLEDEffects / 0x8071 RGBEffects）
+
+    public func rgbFeatureID() throws -> UInt16 {
+        if try featureIndex(of: 0x8071) != nil { return 0x8071 }
+        if try featureIndex(of: 0x8070) != nil { return 0x8070 }
+        throw HIDPPError.featureUnsupported(0x8070)
+    }
+
+    public func rgbZoneCount() throws -> Int {
+        Int(try call(feature: rgbFeatureID(), function: 0)[0])
+    }
+
+    public struct RGBEffectSlot { public let slot: UInt8; public let effectID: UInt16 }
+
+    /// 列出 zone 的效果槽（slot → effect ID；0x0000=off、0x0001=fixed…）
+    public func rgbZoneEffects(zone: UInt8, maxSlots: Int = 16) -> [RGBEffectSlot] {
+        guard let feat = try? rgbFeatureID() else { return [] }
+        var out: [RGBEffectSlot] = []
+        for s in 0..<maxSlots {
+            guard let r = try? call(feature: feat, function: 2, params: [zone, UInt8(s)]) else { break }
+            out.append(RGBEffectSlot(slot: UInt8(s), effectID: UInt16(r[2]) << 8 | UInt16(r[3])))
+        }
+        return out
+    }
+
+    /// 設定 zone 效果。params 補滿 16 bytes，最後的 persist byte 固定 0（只寫 RAM）
+    public func rgbSetZone(zone: UInt8, slot: UInt8, effectParams: [UInt8] = []) throws {
+        var p: [UInt8] = [zone, slot] + effectParams
+        while p.count < 16 { p.append(0) }
+        _ = try call(feature: rgbFeatureID(), function: 3, params: p)
+    }
+
+    /// 關燈：每個 zone 找 off 效果（ID 0x0000），沒有就用 fixed（0x0001）調成黑色
+    public func rgbOff() throws -> [String] {
+        var log: [String] = []
+        let zones = try rgbZoneCount()
+        for z in 0..<zones {
+            let effects = rgbZoneEffects(zone: UInt8(z))
+            if let off = effects.first(where: { $0.effectID == 0x0000 }) {
+                try rgbSetZone(zone: UInt8(z), slot: off.slot)
+                log.append("zone \(z): off（slot \(off.slot)）")
+            } else if let fixed = effects.first(where: { $0.effectID == 0x0001 }) {
+                try rgbSetZone(zone: UInt8(z), slot: fixed.slot, effectParams: [0, 0, 0])
+                log.append("zone \(z): fixed 黑色（slot \(fixed.slot)）")
+            } else {
+                log.append("zone \(z): 找不到 off/fixed 效果，跳過（\(effects.count) 個 slot）")
+            }
+        }
+        return log
+    }
+
+    // MARK: SmartShift（0x2110/0x2111，MX 系；G502 無此 feature，未實測）
+
+    @discardableResult
+    public func setWheel(freespin: Bool, threshold: Int? = nil) throws -> [UInt8] {
+        let feat: UInt16 = (try featureIndex(of: 0x2110) != nil) ? 0x2110 : 0x2111
+        let mode: UInt8 = freespin ? 1 : 2
+        let auto = UInt8(max(0, min(255, threshold ?? 0)))   // 0 = 不變更
+        return try call(feature: feat, function: 1, params: [mode, auto, 0])
     }
 }
