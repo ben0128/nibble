@@ -4,6 +4,30 @@
 // 兩者皆 runtime：斷電、退場都會還原；0x41 重連通知後自動重掛。
 import Foundation
 
+/// 引擎狀態寫到檔案：跨程序可讀，讓 `nibble doctor` 能診斷「引擎為什麼沒動」
+enum EngineState {
+    static let url = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".config/nibble/engine.json")
+
+    static func write(_ fields: [String: Any]) {
+        var payload = read()
+        for (k, v) in fields { payload[k] = v }
+        payload["updated"] = ISO8601DateFormatter().string(from: Date())
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        if let d = try? JSONSerialization.data(withJSONObject: payload,
+                                               options: [.prettyPrinted, .sortedKeys]) {
+            try? d.write(to: url)
+        }
+    }
+
+    static func read() -> [String: Any] {
+        guard let d = try? Data(contentsOf: url),
+              let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return [:] }
+        return o
+    }
+}
+
 /// 兩條路徑（G 系 spy／MX 系 divert）對宿主的統一介面
 protocol RemapEngineProtocol: AnyObject {
     var mappingCount: Int { get }
@@ -105,6 +129,7 @@ final class RemapEngine: RemapEngineProtocol {
     private var original: [UInt8] = []          // 進場前的 remap 表（退場還原）
     private var patched: [UInt8] = []           // 我們寫入的表（重連重掛用）
     private var prevMask: UInt16 = 0
+    private var lastLog = Date.distantPast
     private(set) var active = false
 
     init?(transport: ReceiverTransport, dev: HIDPPDevice, mappings: [Int: ButtonAction]) {
@@ -160,7 +185,18 @@ final class RemapEngine: RemapEngineProtocol {
         prevMask = mask
         guard newly != 0 else { return }
         for bit in 0..<16 where newly & (1 << bit) != 0 {
-            if let a = mappings[bit] { performButtonAction(a) }
+            let mapped = mappings[bit]
+            if let a = mapped { performButtonAction(a) }
+            if Date().timeIntervalSince(lastLog) > 1 {
+                lastLog = Date()
+                EngineState.write([
+                    "lastEventMask": String(format: "0x%04X", mask),
+                    "lastEventBit": bit,
+                    "lastEventButton": "G\(bit + 1)",
+                    "lastEventMapped": mapped != nil,
+                    "lastEventAction": mapped.map { $0.type == "keys" ? ($0.keys ?? "") : ($0.action ?? $0.type) } as Any,
+                ])
+            }
         }
     }
 }

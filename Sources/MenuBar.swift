@@ -25,6 +25,9 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastRGB: String?   // 協定無法回讀燈效，追蹤本 session 設過的值
     private var engine: RemapEngineProtocol?
     private var lowBatteryNotified = false
+    private var refreshing = false
+    private var settingsProcess: Process?
+    private var engineNeedsAX = false
     private var configWatch: DispatchSourceFileSystemObject?
     private var flashWork: DispatchWorkItem?
     private var batteryPercent: Int?
@@ -38,7 +41,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var openSettingsItem: NSMenuItem!
     private let engineItem = NSMenuItem(title: "Remapping: off", action: nil, keyEquivalent: "")
 
-    static let dpiPresets = [400, 800, 1600, 3200, 6400, 12800]
+    static let dpiPresets = [400, 800, 1200, 1600, 2000, 2400, 2800, 3200]
     static let ratePresets = [1000, 500, 250, 125]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -87,7 +90,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         rgbRoot = NSMenuItem(title: "Lighting", action: nil, keyEquivalent: "")
         let rgbMenu = NSMenu()
-        for (title, kind) in [("Off (power saving)", "off"),
+        for (title, kind) in [("Off", "off"),
                               ("Cycle", "cycle"),
                               ("Breathing", "breathing")] {
             let item = NSMenuItem(title: title, action: #selector(setRGBAction(_:)), keyEquivalent: "")
@@ -161,8 +164,12 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func startEngine() {
         engine?.stop()
         engine = nil
+        engineNeedsAX = false
+        engineItem.action = nil
+        engineItem.target = nil
         guard let maps = loadConfig()?.buttonMaps, !maps.isEmpty else {
             engineItem.title = "Remapping: none configured"
+            EngineState.write(["active": false, "reason": "no mappings configured", "mappings": 0])
             return
         }
         do {
@@ -170,23 +177,37 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let devName = (try? dev.name()) ?? "unknown"
             guard let devMap = maps[devName], !devMap.isEmpty else {
                 engineItem.title = "Remapping: none for \(devName)"
+                EngineState.write(["active": false, "reason": "no mappings for \(devName)", "mappings": 0])
                 return
             }
             let needsAX = devMap.values.contains { $0.type == "keys" || $0.type == "system" }
             if needsAX && !axTrusted(promptIfNeeded: true) {
-                engineItem.title = "Remapping: ⚠️ grant Accessibility, then Refresh"
+                // 這是最容易靜默失敗的一步：整列做成可點的捷徑，並寫進狀態檔讓 doctor 看得到
+                engineNeedsAX = true
+                engineItem.title = "Remapping: ⚠️ needs Accessibility — click here"
+                engineItem.action = #selector(openAccessibility)
+                engineItem.target = self
+                EngineState.write(["active": false, "reason": "Accessibility permission not granted",
+                                   "mappings": devMap.count, "axTrusted": false,
+                                   "fix": "System Settings > Privacy & Security > Accessibility > add Nibble.app"])
                 return
             }
             guard let tr = dev.transport as? ReceiverTransport,
                   let eng = makeRemapEngine(transport: tr, dev: dev, savedMap: devMap) else {
                 engineItem.title = "Remapping: unsupported device"
+                EngineState.write(["active": false, "reason": "device exposes neither 0x8110 nor 0x1b04",
+                                   "mappings": devMap.count])
                 return
             }
             try eng.start()
             engine = eng   // engine 持有 dev+transport → 事件流常駐
             engineItem.title = "Remapping: ✓ \(eng.mappingCount) active"
+            EngineState.write(["active": true, "reason": "running", "mappings": eng.mappingCount,
+                               "axTrusted": axTrusted(), "device": devName,
+                               "path": dev.has(0x8110) ? "0x8110 spy" : "0x1b04 divert"])
         } catch {
             engineItem.title = "Remapping: ❌ \(error)"
+            EngineState.write(["active": false, "reason": "\(error)"])
         }
     }
 
@@ -220,7 +241,15 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item
     }
 
-    func menuWillOpen(_ menu: NSMenu) { refresh() }
+    /// 選單先用快取值秒開，refresh 排到選單顯示之後再跑——同步做裝置 I/O 就是先前那個 lag
+    func menuWillOpen(_ menu: NSMenu) {
+        guard !refreshing else { return }
+        refreshing = true
+        DispatchQueue.main.async { [weak self] in
+            self?.refresh()
+            self?.refreshing = false
+        }
+    }
 
     private func openDevice() throws -> HIDPPDevice {
         let (dev, idx) = try uiOpenDevice(preferred: lastIndex)
@@ -294,6 +323,10 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func refreshAction() { refresh(); flash("🔄") }
 
+    @objc private func openAccessibility() {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+    }
+
     @objc private func openInputMonitoring() {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
     }
@@ -357,11 +390,18 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func openPanelAction() {
+        // 已經開著就把它帶到最前面，不要每次點都開一個新視窗
+        if let running = settingsProcess, running.isRunning {
+            NSRunningApplication(processIdentifier: running.processIdentifier)?
+                .activate(options: [.activateIgnoringOtherApps])
+            return
+        }
         guard let exe = Bundle.main.executablePath else { return }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: exe)
         p.arguments = ["ui"]
         try? p.run()   // 獨立程序：面板關掉即退出，menubar 不揹它的記憶體
+        settingsProcess = p
     }
 
     @objc private func saveAction() {

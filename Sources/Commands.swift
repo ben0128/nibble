@@ -164,9 +164,18 @@ func cmdDoctor() -> Int32 {
     add("config", cfg != nil, cfg == nil ? "not created" : "\(bmConfigURL.path) · \(mapCount) button mapping(s)",
         fix: cfg == nil ? "nibble config init" : nil)
 
+    // 改鍵引擎跑在選單列那個程序裡，狀態靠它寫的檔案回報——CLI 自己的 AX 權限不代表引擎的
     if mapCount > 0 {
-        add("accessibility", axTrusted(), axTrusted() ? "granted" : "required to synthesize keystrokes",
-            fix: axTrusted() ? nil : "System Settings > Privacy & Security > Accessibility > enable the app running `nibble menubar`")
+        let st = EngineState.read()
+        let active = st["active"] as? Bool ?? false
+        let reason = st["reason"] as? String ?? "menu bar app has not reported yet"
+        add("remap-engine", active, active ? "running · \(st["mappings"] as? Int ?? 0) mapping(s) · \(st["path"] as? String ?? "")" : reason,
+            fix: active ? nil : (st["fix"] as? String ?? "start the menu bar app: open Nibble.app"))
+        if let last = st["lastEventButton"] as? String {
+            let mapped = st["lastEventMapped"] as? Bool ?? false
+            add("last-button-event", nil,
+                "\(last) (bit \(st["lastEventBit"] as? Int ?? -1), mask \(st["lastEventMask"] as? String ?? "?")) → \(mapped ? "fired \(st["lastEventAction"] as? String ?? "")" : "no mapping on this button")")
+        }
     }
 
     let menubarRunning = sh(["/usr/bin/pgrep", "-f", "nibble menubar"]) == 0

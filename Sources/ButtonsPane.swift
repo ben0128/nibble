@@ -72,6 +72,8 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         hintLabel.font = .systemFont(ofSize: 11)
         hintLabel.textColor = .secondaryLabelColor
         hintLabel.lineBreakMode = .byTruncatingTail
+        hintLabel.usesSingleLineMode = true
+        hintLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         hintLabel.stringValue = "Remaps run in the menu bar app · right-click a row to clear · G1/G2 locked"
         hintLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -171,7 +173,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
                 prevMask = 0
                 try dev.buttonSpyStart()
                 tr.onReport = { [weak self] p in self?.handleSpy(p) }
-                onStatus?("Press any mouse button — its row will highlight")
+                onStatus?("Press a mouse button (wheel scrolling is not a button)")
             } else if dev.has(0x1b04), let fi = try dev.featureIndex(of: 0x1b04) {
                 // MX 路徑：暫時 divert 所有可 divert 的鍵來聽事件，停止時全部還原
                 spyIdx = fi
@@ -217,7 +219,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
                 table.reloadData()
                 table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
                 table.scrollRowToVisible(row)
-                onStatus?("Detected \(rows[row].name) (CID 0x\(String(format: "%04X", cid)))")
+                onStatus?("Detected \(rows[row].name)")
                 return
             }
             i += 2
@@ -241,7 +243,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         table.reloadData()
         table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         table.scrollRowToVisible(row)
-        onStatus?("Detected \(rows[row].name) (bit \(bit)) — if that is not the button you pressed, the bit order needs adjusting")
+        onStatus?("Detected \(rows[row].name) · bit \(bit)")
     }
 
     // MARK: 改鍵彈窗

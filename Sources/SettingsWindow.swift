@@ -81,6 +81,14 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             root.addSubview(v)
         }
         statusLabel.lineBreakMode = .byTruncatingTail
+        statusLabel.usesSingleLineMode = true
+        statusLabel.cell?.truncatesLastVisibleLine = true
+        // 關鍵：不讓長字串把視窗頂寬——標籤讓步，超長就截斷
+        statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        statusLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        deviceLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        deviceLabel.lineBreakMode = .byTruncatingTail
+        batteryLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         NSLayoutConstraint.activate([
             deviceLabel.topAnchor.constraint(equalTo: root.topAnchor, constant: 14),
             deviceLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
