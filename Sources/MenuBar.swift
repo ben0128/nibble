@@ -4,7 +4,25 @@
 import AppKit
 import UserNotifications
 
+/// 單一實例保護：重複啟動會在選單列疊出第二個圖示，兩個程序還會搶同一個 HID 裝置。
+/// 用檔案鎖而非檢查程序名——後者在 .app 與 CLI 混用時不可靠。
+private func acquireMenuBarLock() -> Bool {
+    let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/nibble")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let fd = open(dir.appendingPathComponent("menubar.lock").path, O_CREAT | O_WRONLY, 0o644)
+    guard fd >= 0 else { return true }   // 拿不到鎖檔就別擋使用者
+    if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+        close(fd)
+        return false
+    }
+    return true   // 故意不關 fd：鎖跟著程序生命週期，退出時由系統釋放
+}
+
 func runMenuBar() -> Int32 {
+    guard acquireMenuBarLock() else {
+        print("Nibble menu bar is already running.")
+        return 0
+    }
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)   // 無 Dock 圖示
     let delegate = MenuBarDelegate()

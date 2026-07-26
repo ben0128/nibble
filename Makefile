@@ -27,6 +27,8 @@ app: nibble
 
 # 裝到 /Applications：路徑穩定，權限授權給這一份，repo 裡怎麼重建都不影響
 install-app: app
+	@pkill -f "$(APP_DEST)/$(APP)" 2>/dev/null && echo "quit running app" || true
+	@sleep 1
 	rm -rf "$(APP_DEST)/$(APP)"
 	ditto $(APP) "$(APP_DEST)/$(APP)"   # ditto 保留簽名封印，cp -R 會弄壞
 	@xattr -cr "$(APP_DEST)/$(APP)"     # 複製過程又會沾上 FinderInfo，清掉才過得了 --strict

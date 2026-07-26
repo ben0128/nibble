@@ -200,7 +200,7 @@ func cmdDoctor() -> Int32 {
         for c in checks {
             let s = c["status"] as? String ?? "?"
             let icon = s == "ok" ? "✅" : s == "fail" ? "❌" : "•"
-            let name = (c["check"] as? String ?? "").padding(toLength: 18, withPad: " ", startingAt: 0)
+            let name = (c["check"] as? String ?? "").padding(toLength: 21, withPad: " ", startingAt: 0)
             print(" \(icon) \(name)\(c["detail"] as? String ?? "")")
             if let fix = c["fix"] as? String { print("      → \(fix)") }
         }
