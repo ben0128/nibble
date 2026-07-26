@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Nibble — 516 KB Logitech mouse control for macOS</title>
-  <meta name="description" content="Nibble is a 516 KB zero-dependency command-line tool that controls your Logitech mouse natively on macOS. No daemon, no telemetry, no account. brew install nibble." />
-  <meta property="og:title" content="Nibble — 516 KB. That's the whole app." />
-  <meta property="og:description" content="A 516 KB binary that speaks HID++ 4.2 to your Logitech mouse. No daemon, no telemetry, no account." />
+  <title>Nibble — 530 KB Logitech mouse control for macOS</title>
+  <meta name="description" content="Nibble is a 530 KB zero-dependency command-line tool that controls your Logitech mouse natively on macOS. No daemon, no telemetry, no account. brew install nibble." />
+  <meta property="og:title" content="Nibble — 530 KB. That's the whole app." />
+  <meta property="og:description" content="A 530 KB binary that speaks HID++ 4.2 to your Logitech mouse. No daemon, no telemetry, no account." />
   <meta property="og:type" content="website" />
   <meta name="theme-color" content="#0B0E14" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%96%B1%EF%B8%8F%3C/text%3E%3C/svg%3E" />
@@ -260,14 +260,14 @@
     <div class="wrap">
       <div>
         <span class="eyebrow">Logitech mouse control for macOS</span>
-        <h1>516 KB.<br />That's the whole app.</h1>
+        <h1>530 KB.<br />That's the whole app.</h1>
         <p class="sub">A nibble is half a byte. This one is a single command-line binary that controls your Logitech mouse natively on macOS — no daemon, no account, no telemetry.</p>
         <div class="cta-row">
           <button class="btn btn-brew" data-copy="brew tap ben0128/nibble && brew trust ben0128/nibble && brew install nibble" title="brew tap ben0128/nibble && brew trust ben0128/nibble && brew install nibble" aria-label="copy the Homebrew install command"><span class="p">$</span> brew install nibble <span class="cp">⧉</span></button>
           <a class="btn btn-primary" href="https://github.com/ben0128/nibble">Get Nibble on GitHub</a>
         </div>
         <div class="hero-meta">
-          <span class="chip">516 KB binary</span>
+          <span class="chip">530 KB binary</span>
           <span class="chip">Zero dependencies</span>
           <span class="chip">Open source · MIT</span>
         </div>
@@ -315,7 +315,7 @@
   <section id="compare">
     <div class="wrap">
       <span class="eyebrow">The pitch, to scale</span>
-      <h2>G HUB is a 4 GB install. Nibble is 516 KB.</h2>
+      <h2>G HUB is a 4 GB install. Nibble is 530 KB.</h2>
       <div class="bars">
         <div class="bar-row">
           <span class="bar-name">G HUB</span>
@@ -327,10 +327,10 @@
         </div>
         <div class="bar-row">
           <span class="bar-name">Nibble</span>
-          <div class="bar-track"><div class="bar nib"></div><span class="after-label">516 KB</span></div>
+          <div class="bar-track"><div class="bar nib"></div><span class="after-label">530 KB</span></div>
         </div>
       </div>
-      <p class="bars-note">Drawn to scale, 516 KB would be 0.12 px wide — we rounded up so you can see it.</p>
+      <p class="bars-note">Drawn to scale, 530 KB would be 0.12 px wide — we rounded up so you can see it.</p>
     </div>
   </section>
 
@@ -341,7 +341,7 @@
       <h2>Small, native, and honest.</h2>
       <div class="grid">
         <div class="card">
-          <h3>516 KB. Zero dependencies.</h3>
+          <h3>530 KB. Zero dependencies.</h3>
           <p>One static binary built with make. No runtime, no installer, no framework — nothing to keep updated.</p>
         </div>
         <div class="card">
@@ -428,6 +428,7 @@ make
 ./nibble status">copy</button><span class="n">git clone</span> https://github.com/ben0128/nibble <span class="s">&amp;&amp;</span> <span class="n">cd</span> nibble
 <span class="n">make</span>
 ./nibble status</pre>
+          <p class="hint" style="margin:14px 0 0">make app builds Nibble.app — the same menu bar launched from Finder, plus low-battery notifications.</p>
           <div class="callout">
             <b>First run:</b> <span>grant Input Monitoring — System Settings → Privacy &amp; Security → Input Monitoring → enable your terminal, then re-run. Error</span> <code>0xE00002E2</code> <span>just means the permission is missing; no restart needed. Button remapping additionally needs Accessibility (prompted on first engine start).</span>
           </div>
@@ -439,7 +440,13 @@ make
           <pre class="code">{
   <span class="k">"dpi"</span>: <span class="n">1600</span>,
   <span class="k">"reportRateHz"</span>: <span class="n">1000</span>,
-  <span class="k">"rgb"</span>: <span class="s">"off"</span>
+  <span class="k">"rgb"</span>: <span class="s">"off"</span>,
+  <span class="k">"buttonMaps"</span>: {
+    <span class="k">"G502 LIGHTSPEED Wireless Gaming Mouse"</span>: {
+      <span class="k">"G7"</span>: { <span class="k">"type"</span>: <span class="s">"keys"</span>, <span class="k">"keys"</span>: <span class="s">"cmd+space"</span> },
+      <span class="k">"G8"</span>: { <span class="k">"type"</span>: <span class="s">"system"</span>, <span class="k">"action"</span>: <span class="s">"mission-control"</span> }
+    }
+  }
 }</pre>
           <p class="hint" style="margin:14px 0 0">Also available: wheelMode "free" / "ratchet" and wheelThreshold 1–254 (MX-series). Then nibble apply — or nibble replay install to re-apply at every login.</p>
         </div>
