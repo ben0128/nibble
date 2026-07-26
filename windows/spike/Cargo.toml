@@ -1,0 +1,21 @@
+# M0 探針——拋棄式（對應當年 macOS 的 spike/m0.swift）。
+# 唯一目的：在 Ben 的 VM 裡證明「USB passthrough 之下 HID++ 一問一答可靠」。
+# GO 判準見 docs/superpowers/specs/2026-07-27-windows-port-design.md §5。
+[package]
+name = "m0-probe"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.60"
+features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Devices_HumanInterfaceDevice",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Threading",
+]
