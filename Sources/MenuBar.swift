@@ -68,6 +68,9 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var rgbRoot: NSMenuItem!
     private var permissionItem: NSMenuItem!
     private var openSettingsItem: NSMenuItem!
+    private var remapRoot: NSMenuItem!
+    private var pauseItem: NSMenuItem!
+    private var remapPaused = false
     private let engineItem = NSMenuItem(title: "Remapping: off", action: nil, keyEquivalent: "")
 
     static let dpiPresets = [400, 800, 1200, 1600, 2000, 2400, 2800, 3200]
@@ -90,7 +93,6 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(permissionItem)
         menu.addItem(openSettingsItem)
 
-        menu.addItem(engineItem)
         menu.addItem(.separator())
 
         dpiRoot = NSMenuItem(title: "DPI", action: nil, keyEquivalent: "")
@@ -131,11 +133,21 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rgbRoot.submenu = rgbMenu
         menu.addItem(rgbRoot)
 
+        // 改鍵從一行唯讀訊息升級成可操作的子選單：暫停／恢復、看狀態、直接跳去編輯
+        remapRoot = NSMenuItem(title: "Remapping", action: nil, keyEquivalent: "")
+        let remapMenu = NSMenu()
+        pauseItem = makeItem("Pause remapping", #selector(togglePause))
+        remapMenu.addItem(pauseItem)
+        remapMenu.addItem(engineItem)          // 狀態／失敗原因，必要時可點去開權限設定
+        remapMenu.addItem(.separator())
+        remapMenu.addItem(makeItem("Edit buttons…", #selector(openButtonsAction)))
+        remapRoot.submenu = remapMenu
+        menu.addItem(remapRoot)
+
         menu.addItem(.separator())
         menu.addItem(makeItem("Settings…", #selector(openPanelAction), key: ","))
+        menu.addItem(makeItem("Save current settings", #selector(saveAction)))
         menu.addItem(makeItem("Refresh now", #selector(refreshAction), key: "r"))
-        menu.addItem(makeItem("Save as default", #selector(saveAction)))
-        menu.addItem(makeItem("Apply config file", #selector(applyAction)))
         menu.addItem(.separator())
         menu.addItem(makeItem("About Nibble \(NIBBLE_VERSION)", #selector(aboutAction)))
         menu.addItem(makeItem("Quit (mouse keeps working)", #selector(quitAction), key: "q"))
@@ -193,6 +205,8 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func startEngine() {
         engine?.stop()
         engine = nil
+        defer { updateRemapSummary() }
+        guard !remapPaused else { engineItem.title = "Paused — buttons behave normally"; return }
         engineNeedsAX = false
         engineItem.action = nil
         engineItem.target = nil
@@ -259,6 +273,33 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    @objc private func togglePause() {
+        remapPaused.toggle()
+        if remapPaused {
+            engine?.stop()
+            engine = nil
+            engineItem.title = "Paused — buttons behave normally"
+            EngineState.writeStatus(["active": false, "reason": "paused by user"])
+        } else {
+            startEngine()
+        }
+        pauseItem.title = remapPaused ? "Resume remapping" : "Pause remapping"
+        updateRemapSummary()
+    }
+
+    @objc private func openButtonsAction() { openPanel(tab: "buttons") }
+
+    /// 父列直接說明狀態，不必展開子選單
+    private func updateRemapSummary() {
+        if remapPaused { remapRoot.title = "Remapping\tpaused"; return }
+        if let e = engine, e.active { remapRoot.title = "Remapping\t\(e.mappingCount) active" }
+        else if (loadConfig()?.buttonMaps?.values.reduce(0) { $0 + $1.count } ?? 0) == 0 {
+            remapRoot.title = "Remapping\tnone"
+        } else {
+            remapRoot.title = "Remapping\t⚠️ not running"
+        }
+    }
+
     @objc private func reloadEngineAction() { startEngine() }
 
     /// 低電量通知：需要 .app bundle（`make app`）；裸 binary 執行時靜默略過。
@@ -320,6 +361,16 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rgbRoot.title = "Lighting" + (rgbLabel.map { "\t\($0)" } ?? "")
     }
 
+    /// 讀不到裝置時：控制列變灰、父列不顯示過期數值（顯示舊值等於在說謊）
+    private func setControlsLive(_ live: Bool) {
+        for item in [dpiRoot, rateRoot, rgbRoot] { item?.isEnabled = live }
+        if !live {
+            dpiRoot.title = "DPI"
+            rateRoot.title = "Report rate"
+            rgbRoot.title = "Lighting"
+        }
+    }
+
     private func setPermissionUI(denied: Bool) {
         permissionDenied = denied
         permissionItem.isHidden = !denied
@@ -339,13 +390,14 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 batteryPercent = b.percent
                 batteryCharging = b.charging
                 let volt = b.millivolts.map { String(format: " · %.2fV", Double($0) / 1000) } ?? ""
-                detailItem.title = "\(b.charging ? "Charging ⚡" : "Discharging")\(volt)"
+                detailItem.title = "\(b.percent)% · \(b.charging ? "charging ⚡" : "discharging")\(volt)"
                 statusTooltip = "\(deviceItem.title) · \(b.percent)%\(volt)"
                 applyStatusAppearance()
                 notifyLowBatteryIfNeeded(percent: b.percent, charging: b.charging, device: deviceItem.title)
             }
             syncChecks(dev)
-            if engine == nil, let maps = loadConfig()?.buttonMaps, !maps.isEmpty { startEngine() }
+            setControlsLive(true)
+            if engine == nil, !remapPaused, let maps = loadConfig()?.buttonMaps, !maps.isEmpty { startEngine() }
         } catch let e as HIDPPError {
             if case .transport(let msg) = e, msg.contains("Input Monitoring") {
                 batteryPercent = nil
@@ -358,16 +410,18 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 batteryPercent = nil
                 statusTooltip = "Nibble — mouse offline or asleep"
                 applyStatusAppearance()
-                deviceItem.title = "Mouse offline or asleep"
-                detailItem.title = "Move the mouse, then Refresh"
+                deviceItem.title = "Mouse asleep"
+                detailItem.title = "Move it to wake — values below are hidden until then"
                 setPermissionUI(denied: false)
+                setControlsLive(false)
             }
         } catch {
             batteryPercent = nil
             statusTooltip = "Nibble — \(error)"
             applyStatusAppearance()
-            deviceItem.title = "Mouse offline or asleep"
+            deviceItem.title = "Mouse offline"
             detailItem.title = "\(error)"
+            setControlsLive(false)
         }
     }
 
@@ -439,7 +493,9 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc private func openPanelAction() {
+    @objc private func openPanelAction() { openPanel(tab: nil) }
+
+    private func openPanel(tab: String?) {
         // 已經開著就把它帶到最前面，不要每次點都開一個新視窗
         if let running = settingsProcess, running.isRunning {
             NSRunningApplication(processIdentifier: running.processIdentifier)?
@@ -449,7 +505,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let exe = Bundle.main.executablePath else { return }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: exe)
-        p.arguments = ["ui"]
+        p.arguments = tab.map { ["ui", $0] } ?? ["ui"]
         try? p.run()   // 獨立程序：面板關掉即退出，menubar 不揹它的記憶體
         settingsProcess = p
     }
@@ -460,13 +516,6 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             detailItem.title = "Saved as default ✓ replayed at login"
             flash("✓💾")
         }
-    }
-
-    @objc private func applyAction() {
-        _ = cmdApply()
-        refresh()
-        detailItem.title = "Config applied ✓"
-        flash("✓⚙️")
     }
 
     @objc private func quitAction() { NSApp.terminate(nil) }

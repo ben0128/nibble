@@ -33,7 +33,7 @@ case "config":   exit(cmdConfig(subArgs))
 case "apply":    exit(cmdApply())
 case "replay":   exit(cmdReplay(subArgs))
 case "menubar":  exit(runMenuBar())
-case "ui":       exit(runSettingsUI())
+case "ui":       exit(runSettingsUI(initialTab: subArgs.first))
 case "version", "--version", "-v":
     if jsonMode { emitJSON(["version": NIBBLE_VERSION]) } else { print("nibble \(NIBBLE_VERSION)") }
     exit(0)
@@ -70,7 +70,7 @@ default:
 
     UI
       nibble menubar                interactive menu bar + remap engine host (~15 MB)
-      nibble ui                     settings window (General + Buttons); quits when closed
+      nibble ui [buttons]           settings window (General + Buttons); quits when closed
       open Nibble.app               same as menubar; bundle also enables low-battery notifications
 
     Env: NIBBLE_DEBUG=1 dumps raw HID++ packets.

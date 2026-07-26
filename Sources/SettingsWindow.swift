@@ -2,10 +2,11 @@
 // 設定器哲學：開 → 調 → 關窗即退出程序，零常駐。純 AppKit 手寫佈局，無 SwiftUI runtime。
 import AppKit
 
-func runSettingsUI() -> Int32 {
+func runSettingsUI(initialTab: String? = nil) -> Int32 {
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
     let delegate = SettingsDelegate()
+    delegate.initialTab = initialTab
     app.delegate = delegate
     app.run()
     return 0
@@ -30,6 +31,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private var lastRGB: String?
     private let buttonsPane = ButtonsPane()
     private var headerTimer: Timer?
+    var initialTab: String?
     private static let rateValues = [125, 250, 500, 1000]
     private static let rgbKinds = ["off", "cycle", "breathing"]
 
@@ -156,6 +158,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
 
+        if initialTab == "buttons" { tabs.selectTabViewItem(withIdentifier: "buttons") }
         loadState()
         buttonsPane.reload()
         headerTimer = Timer.scheduledTimer(withTimeInterval: 45, repeats: true) { [weak self] _ in
