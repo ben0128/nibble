@@ -39,47 +39,43 @@ case "version", "--version", "-v":
     exit(0)
 default:
     print("""
-    Nibble v\(NIBBLE_VERSION) — \(L("lightweight Logitech mouse control for macOS (native · zero-dependency · no daemon by default)",
-                                    "輕量羅技滑鼠控制工具（macOS 原生 · 零依賴 · 預設零常駐）"))
+    Nibble v\(NIBBLE_VERSION) — \("lightweight Logitech mouse control for macOS (native · zero-dependency · no daemon by default)")
 
-    \(L("READ", "讀取"))
-      nibble status [--json]        \(L("device overview", "裝置總覽"))
-      nibble battery [--json]       \(L("battery only, script-friendly", "只印電池，適合腳本"))
-      nibble dump [--json]          \(L("full HID++ feature enumeration", "HID++ feature 完整枚舉"))
-      nibble buttons [--json]       \(L("programmable buttons (0x1b04 MX / 0x8110 G)", "按鍵列舉（0x1b04 MX / 0x8110 G 系）"))
-      nibble onboard info [--json]  \(L("onboard memory info", "板載記憶體資訊"))
-      nibble doctor [--json]        \(L("diagnose permissions, device, engine — start here if stuck", "診斷權限／裝置／引擎——卡住先跑這個"))
+    READ
+      nibble status [--json]        device overview
+      nibble battery [--json]       battery only, script-friendly
+      nibble dump [--json]          full HID++ feature enumeration
+      nibble buttons [--json]       \("programmable buttons (0x1b04 MX / 0x8110 G)")
+      nibble onboard info [--json]  onboard memory info
+      nibble doctor [--json]        diagnose permissions, device, engine — start here if stuck
 
-    \(L("CONFIGURE (runtime writes, reverted by power cycle, verified by read-back)",
-        "設定（runtime 寫入，斷電回復，寫後回讀驗證）"))
-      nibble dpi [50-25600]         \(L("get / set DPI", "讀／寫 DPI"))
-      nibble rate [125|250|500|1000]\(L(" get / set report rate", " 讀／寫回報率"))
-      nibble rgb off|show           \(L("lights off (power saving) / list effects", "關燈省電／看燈效槽"))
-      nibble mode [host|onboard]    \(L("control-mode flag", "板載↔軟體主導模式旗標"))
-      nibble wheel free|ratchet     \(L("SmartShift (MX-series)", "滾輪模式（MX 系）"))
+    \("CONFIGURE (runtime writes, reverted by power cycle, verified by read-back)")
+      nibble dpi [50-25600]         get / set DPI
+      nibble rate [125|250|500|1000] get / set report rate
+      nibble rgb off|show           \("lights off (power saving) / list effects")
+      nibble mode [host|onboard]    control-mode flag
+      nibble wheel free|ratchet     \("SmartShift (MX-series)")
 
-    \(L("REMAP BUTTONS (engine runs inside the menu bar app)", "改鍵（引擎由選單列常駐執行）"))
-      nibble remap                  \(L("press a button, assign an action", "按實體鍵 → 指定動作"))
-      nibble spy [seconds]          \(L("live button-event monitor (diagnostic)", "按鍵事件即時監看（診斷）"))
+    \("REMAP BUTTONS (engine runs inside the menu bar app)")
+      nibble remap                  press a button, assign an action
+      nibble spy [seconds]          \("live button-event monitor (diagnostic)")
 
-    \(L("CONFIG & REPLAY", "設定檔與重放"))
+    CONFIG & REPLAY
       nibble config init|show       ~/.config/nibble.json
-      nibble apply                  \(L("apply config file", "套用設定檔"))
-      nibble replay install         \(L("auto-apply at login (one-shot launchd)", "登入自動 apply（launchd 一次性）"))
+      nibble apply                  apply config file
+      nibble replay install         \("auto-apply at login (one-shot launchd)")
 
-    \(L("ONBOARD MEMORY (read-only by design)", "板載記憶體（唯讀）"))
-      nibble onboard backup         \(L("dump all sectors — escape hatch", "全 sector 存檔——逃生門"))
+    \("ONBOARD MEMORY (read-only by design)")
+      nibble onboard backup         dump all sectors — escape hatch
 
-    \(L("UI", "介面"))
-      nibble menubar                \(L("interactive menu bar + remap engine host (~15 MB)", "互動選單列＋改鍵引擎宿主（約 15 MB）"))
-      nibble ui                     \(L("settings window (General + Buttons); quits when closed", "設定面板（General＋Buttons），關窗即退"))
-      open Nibble.app               \(L("same as menubar; bundle also enables low-battery notifications", "同 menubar；bundle 版另有低電量通知"))
+    UI
+      nibble menubar                \("interactive menu bar + remap engine host (~15 MB)")
+      nibble ui                     \("settings window (General + Buttons); quits when closed")
+      open Nibble.app               same as menubar; bundle also enables low-battery notifications
 
-    \(L("Env: NIBBLE_DEBUG=1 dumps raw HID++ packets.", "環境變數：NIBBLE_DEBUG=1 印出 HID++ 原始封包"))
-    \(L("First run: System Settings > Privacy & Security > Input Monitoring > enable your terminal.",
-        "首次使用：系統設定 → 隱私權與安全性 → 輸入監控 → 授權你的終端機"))
-    \(L("Exit codes: 0 ok · 1 no device / not applied · 2 transport error · 64 usage.",
-        "退出碼：0 成功 · 1 無裝置／未生效 · 2 傳輸錯誤 · 64 用法錯誤"))
+    Env: NIBBLE_DEBUG=1 dumps raw HID++ packets.
+    First run: System Settings > Privacy & Security > Input Monitoring > enable your terminal.
+    Exit codes: 0 ok · 1 no device / not applied · 2 transport error · 64 usage.
     """)
     exit(command == "help" ? 0 : 64)
 }

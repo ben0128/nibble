@@ -31,8 +31,7 @@ func cmdStatus() -> Int32 {
         let tr = try ReceiverTransport.openFirst()
         let devs = discover(tr)
         guard let hit = devs.first else {
-            emitError(L("receiver present (PID 0x\(String(format: "%04X", tr.productID))) but no awake device — move the mouse and retry",
-                        "接收器在（PID 0x\(String(format: "%04X", tr.productID))），但沒有醒著的裝置——晃兩下滑鼠再試"),
+            emitError("receiver present (PID 0x\(String(format: "%04X", tr.productID))) but no awake device — move the mouse and retry",
                       code: "no-awake-device")
             return 1
         }
@@ -79,7 +78,7 @@ func cmdStatus() -> Int32 {
         ]
         print(" features  " + flags.map { "\($0.0) \($0.1 ? "✓" : "✗")" }.joined(separator: " · "))
         if devs.count > 1 {
-            print(" others    另有 \(devs.count - 1) 個裝置在線（index \(devs.dropFirst().map { String($0.idx) }.joined(separator: ",")))，用 status 之外的指令指定")
+            print(" others    \(devs.count - 1) more device(s) online (index \(devs.dropFirst().map { String($0.idx) }.joined(separator: ",")))")
         }
         print(rule)
         print(footer(since: t0))
@@ -94,7 +93,7 @@ func cmdBattery() -> Int32 {
     do {
         let tr = try ReceiverTransport.openFirst()
         guard let hit = discover(tr).first else {
-            emitError(L("no awake device", "沒有醒著的裝置"), code: "no-awake-device")
+            emitError("no awake device", code: "no-awake-device")
             return 1
         }
         let b = try hit.dev.battery()
@@ -132,7 +131,7 @@ func cmdDoctor() -> Int32 {
         add("receiver", true, String(format: "046D:%04X", tr.productID))
     } catch {
         let msg = "\(error)"
-        if msg.contains("輸入監控") || msg.contains("Input Monitoring") || msg.contains("E00002E2") {
+        if msg.contains("Input Monitoring") || msg.contains("E00002E2") {
             add("input-monitoring", false, msg,
                 fix: "System Settings > Privacy & Security > Input Monitoring > enable your terminal (or Nibble.app), then rerun")
             add("receiver", nil, "skipped — cannot open HID without permission")
@@ -193,7 +192,7 @@ func cmdDoctor() -> Int32 {
             print(" \(icon) \(name)\(c["detail"] as? String ?? "")")
             if let fix = c["fix"] as? String { print("      → \(fix)") }
         }
-        print("\n \(failed == 0 ? L("All good.", "一切正常。") : L("\(failed) issue(s) — fix the first arrow above and rerun.", "\(failed) 項有問題——照上面第一個箭頭修，然後重跑。"))")
+        print("\n \(failed == 0 ? "All good." : "\(failed) issue(s) — fix the first arrow above and rerun.")")
     }
     return failed == 0 ? 0 : 1
 }
@@ -203,7 +202,7 @@ func withDevice(_ body: (HIDPPDevice, ReceiverTransport) throws -> Int32) -> Int
     do {
         let tr = try ReceiverTransport.openFirst()
         guard let hit = discover(tr).first else {
-            print("接收器在，但沒有醒著的裝置——晃兩下滑鼠再試")
+            print("Receiver present but no awake device — move the mouse and retry")
             return 1
         }
         return try body(hit.dev, tr)
@@ -219,15 +218,15 @@ func cmdDPI(_ args: [String]) -> Int32 {
     withDevice { dev, _ in
         guard let arg = args.first else { print("dpi \(try dev.currentDPI())"); return 0 }
         guard let target = Int(arg), (50...25600).contains(target) else {
-            print("用法：nibble dpi [50–25600]"); return 64
+            print("usage: nibble dpi [50-25600]"); return 64
         }
         var got = try dev.setDPI(target)
         if got != target, dev.has(0x8100), (try? dev.onboardMode()) == .onboard {
-            print("onboard 模式下寫入未生效（回讀 \(got)）→ 切 host 模式重試（斷電會自動回復）")
+            print("write ignored in onboard mode (read back \(got)) -> retrying in host mode (reverts on power cycle)")
             try dev.setOnboardMode(.host)
             got = try dev.setDPI(target)
         }
-        print(got == target ? "dpi \(got) ✓（寫後回讀驗證）" : "⚠️ 要求 \(target)，裝置回讀 \(got)")
+        print(got == target ? "dpi \(got) ✓ (verified by read-back)" : "⚠️ asked \(target), device reports \(got)")
         return got == target ? 0 : 1
     }
 }
@@ -236,11 +235,11 @@ func cmdRate(_ args: [String]) -> Int32 {
     withDevice { dev, _ in
         let supported = (try? dev.supportedReportRatesHz()) ?? []
         guard let arg = args.first else {
-            print("rate \(try dev.reportRateHz()) Hz（支援：\(supported.map(String.init).joined(separator: "/")) Hz）")
+            print("rate \(try dev.reportRateHz()) Hz (supported: \(supported.map(String.init).joined(separator: "/")) Hz)")
             return 0
         }
         guard let hz = Int(arg), supported.isEmpty || supported.contains(hz) else {
-            print("用法：nibble rate [\(supported.map(String.init).joined(separator: "|"))]"); return 64
+            print("usage: nibble rate [\(supported.map(String.init).joined(separator: "|"))]"); return 64
         }
         // 0x8060 寫入只在 host 模式被允許（onboard 模式回 err 0x02）——直接報錯也要走退路
         var got: Int
@@ -248,7 +247,7 @@ func cmdRate(_ args: [String]) -> Int32 {
             got = try dev.setReportRateHz(hz)
         } catch {
             guard dev.has(0x8100), (try? dev.onboardMode()) == .onboard else { throw error }
-            print("onboard 模式拒絕寫入（\(error)）→ 切 host 模式重試（斷電會自動回復）")
+            print("onboard mode rejected the write (\(error)) -> retrying in host mode (reverts on power cycle)")
             try dev.setOnboardMode(.host)
             got = try dev.setReportRateHz(hz)
         }
@@ -256,7 +255,7 @@ func cmdRate(_ args: [String]) -> Int32 {
             try dev.setOnboardMode(.host)
             got = try dev.setReportRateHz(hz)
         }
-        print(got == hz ? "rate \(got) Hz ✓（寫後回讀驗證）" : "⚠️ 要求 \(hz)Hz，裝置回讀 \(got)Hz")
+        print(got == hz ? "rate \(got) Hz ✓ (verified by read-back)" : "⚠️ asked \(hz)Hz, device reports \(got)Hz")
         return got == hz ? 0 : 1
     }
 }
@@ -266,11 +265,11 @@ func cmdRGB(_ args: [String]) -> Int32 {
         switch args.first ?? "show" {
         case "off":
             if dev.has(0x8100), (try? dev.onboardMode()) == .onboard {
-                print("RGB 在 onboard 模式由板載 profile 主導 → 切 host 模式（斷電會自動回復）")
+                print("lighting is owned by the onboard profile -> switching to host mode (reverts on power cycle)")
                 try dev.setOnboardMode(.host)
             }
             for line in try dev.rgbOff() { print(" \(line)") }
-            print("rgb off ✓ 看一眼滑鼠——燈應該滅了（省電模式，只寫 RAM 不碰 flash）")
+            print("rgb off ✓ check the mouse — lights should be out (RAM only, flash untouched)")
             return 0
         case "show":
             let zones = try dev.rgbZoneCount()
@@ -282,7 +281,7 @@ func cmdRGB(_ args: [String]) -> Int32 {
             }
             return 0
         default:
-            print("用法：nibble rgb [off|show]"); return 64
+            print("usage: nibble rgb [off|show]"); return 64
         }
     }
 }
@@ -297,7 +296,7 @@ func cmdMode(_ args: [String]) -> Int32 {
         case "onboard":
             try dev.setOnboardMode(.onboard); print("mode \(try dev.onboardMode()) ✓")
         default:
-            print("用法：nibble mode [host|onboard]"); return 64
+            print("usage: nibble mode [host|onboard]"); return 64
         }
         return 0
     }
@@ -310,13 +309,13 @@ func cmdWheel(_ args: [String]) -> Int32 {
         case "ratchet": _ = try dev.setWheel(freespin: false)
         case "threshold":
             guard let n = Int(args.dropFirst().first ?? ""), (1...254).contains(n) else {
-                print("用法：nibble wheel threshold <1-254>"); return 64
+                print("usage: nibble wheel threshold <1-254>"); return 64
             }
             _ = try dev.setWheel(freespin: false, threshold: n)
         default:
-            print("用法：nibble wheel [free|ratchet|threshold N]（MX 系限定，G502 無此功能）"); return 64
+            print("usage: nibble wheel [free|ratchet|threshold N] (MX-series only)"); return 64
         }
-        print("wheel ✓（注意：此功能尚未在實機驗證——MX Master 3 上線後補測）")
+        print("wheel ✓ (not yet hardware-verified — MX-series path)")
         return 0
     }
 }
@@ -354,7 +353,7 @@ func cmdOnboard(_ args: [String]) -> Int32 {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             var blob = Data()
             var unreadable: [Int] = []
-            print("備份 \(info.sectorCount) sectors × \(info.sectorSize)B（唯讀，不動滑鼠任何狀態）…")
+            print("backing up \(info.sectorCount) sectors x \(info.sectorSize)B (read-only, device state untouched)...")
             for sector in 0..<info.sectorCount {
                 var sectorData = [UInt8]()
                 var failed = false
@@ -379,7 +378,7 @@ func cmdOnboard(_ args: [String]) -> Int32 {
                     sectorData = [UInt8](repeating: 0xFF, count: info.sectorSize)
                 }
                 blob.append(contentsOf: sectorData.prefix(info.sectorSize))
-                print(" sector \(sector) \(failed ? "✗（不可讀，以 FF 填充）" : "✓")")
+                print(" sector \(sector) \(failed ? "✗ (unreadable, filled with FF)" : "✓")")
             }
             let bin = dir.appendingPathComponent("onboard-\(ts).bin")
             try blob.write(to: bin)
@@ -394,7 +393,7 @@ func cmdOnboard(_ args: [String]) -> Int32 {
             print("✅ \(blob.count) bytes → \(bin.path)")
             return 0
         default:
-            print("用法：nibble onboard [info|backup]（寫入功能凍結中——安全路線）"); return 64
+            print("usage: nibble onboard [info|backup] (writes are frozen by design)"); return 64
         }
     }
 }
@@ -433,24 +432,24 @@ func cmdConfig(_ args: [String]) -> Int32 {
             cfg.reportRateHz = try? dev.reportRateHz()
             if cfg.rgb == nil { cfg.rgb = "keep" }
             try saveConfig(cfg)
-            print("✅ 以目前裝置狀態更新 \(bmConfigURL.path)（rgb 預設 keep，要省電改成 \"off\"）")
+            print("✅ updated \(bmConfigURL.path) from current device state (rgb defaults to keep; set \"off\" to save power)")
             return 0
         }
     case "show":
         guard let data = try? Data(contentsOf: bmConfigURL), let s = String(data: data, encoding: .utf8) else {
-            print("還沒有設定檔——先跑 nibble config init"); return 1
+            print("no config yet — run: nibble config init"); return 1
         }
         print(s)
         return 0
     default:
-        print("用法：nibble config [init|show]"); return 64
+        print("usage: nibble config [init|show]"); return 64
     }
 }
 
 func cmdApply() -> Int32 {
     guard let data = try? Data(contentsOf: bmConfigURL),
           let cfg = try? JSONDecoder().decode(BMConfig.self, from: data) else {
-        print("讀不到 \(bmConfigURL.path)——先跑 nibble config init")
+        print("cannot read \(bmConfigURL.path) — run: nibble config init")
         return 1
     }
     return withDevice { dev, _ in
@@ -458,26 +457,26 @@ func cmdApply() -> Int32 {
         // runtime 設定要 host 模式才穩定生效；模式旗標斷電自動回復，安全
         if dev.has(0x8100), (try? dev.onboardMode()) == .onboard {
             try dev.setOnboardMode(.host)
-            print(" mode → host（runtime 設定主導；斷電自動回復 onboard）")
+            print(" mode -> host (runtime settings in charge; reverts on power cycle)")
         }
         if let dpi = cfg.dpi {
             let got = (try? dev.setDPI(dpi)) ?? -1
-            print(" dpi \(dpi) \(got == dpi ? "✓" : "✗（回讀 \(got)）")"); if got != dpi { failures += 1 }
+            print(" dpi \(dpi) \(got == dpi ? "✓" : "✗ (read back \(got))")"); if got != dpi { failures += 1 }
         }
         if let hz = cfg.reportRateHz {
             let got = (try? dev.setReportRateHz(hz)) ?? -1
-            print(" rate \(hz)Hz \(got == hz ? "✓" : "✗（回讀 \(got)）")"); if got != hz { failures += 1 }
+            print(" rate \(hz)Hz \(got == hz ? "✓" : "✗ (read back \(got))")"); if got != hz { failures += 1 }
         }
         if cfg.rgb == "off" {
-            if let log = try? dev.rgbOff() { print(" rgb off ✓（\(log.count) zones）") }
+            if let log = try? dev.rgbOff() { print(" rgb off ✓ (\(log.count) zones)") }
             else { print(" rgb off ✗"); failures += 1 }
         }
         if let wm = cfg.wheelMode {
             if (try? dev.setWheel(freespin: wm == "free", threshold: cfg.wheelThreshold)) != nil {
                 print(" wheel \(wm) ✓")
-            } else { print(" wheel \(wm) —（裝置無此功能）") }
+            } else { print(" wheel \(wm) — (unsupported on this device)") }
         }
-        print(failures == 0 ? "apply 完成 ✓" : "apply 完成，\(failures) 項未生效")
+        print(failures == 0 ? "apply complete ✓" : "apply complete, \(failures) setting(s) did not take effect")
         return failures == 0 ? 0 : 1
     }
 }
@@ -492,7 +491,7 @@ func cmdReplay(_ args: [String]) -> Int32 {
     let uid = getuid()
     switch args.first ?? "status" {
     case "install":
-        guard let exe = Bundle.main.executablePath else { print("❌ 找不到執行檔路徑"); return 2 }
+        guard let exe = Bundle.main.executablePath else { print("❌ cannot resolve executable path"); return 2 }
         let plist = """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -509,19 +508,19 @@ func cmdReplay(_ args: [String]) -> Int32 {
         """
         _ = sh(["/bin/launchctl", "bootout", "gui/\(uid)/\(label)"])   // 冪等：先卸舊的
         do { try plist.write(to: replayPlistURL, atomically: true, encoding: .utf8) }
-        catch { print("❌ 寫不進 \(replayPlistURL.path)：\(error)"); return 2 }
+        catch { print("❌ cannot write \(replayPlistURL.path): \(error)"); return 2 }
         let rc = sh(["/bin/launchctl", "bootstrap", "gui/\(uid)", replayPlistURL.path])
-        print(rc == 0 ? "✅ 已安裝登入重放：每次登入自動 nibble apply（跑完即退，零常駐）\n   plist：\(replayPlistURL.path)\n   ⚠️ 若移動 nibble 執行檔，要重跑 replay install"
-                      : "⚠️ plist 已寫入但 launchctl bootstrap 回傳 \(rc)")
+        print(rc == 0 ? "✅ login replay installed: runs `nibble apply` at each login (one-shot, no daemon)\n   plist: \(replayPlistURL.path)\n   ⚠️ rerun `replay install` if you move the nibble binary"
+                      : "⚠️ plist written but launchctl bootstrap returned \(rc)")
         return 0
     case "uninstall":
         _ = sh(["/bin/launchctl", "bootout", "gui/\(uid)/\(label)"])
         try? FileManager.default.removeItem(at: replayPlistURL)
-        print("✅ 已移除登入重放")
+        print("✅ login replay removed")
         return 0
     default:
         let installed = FileManager.default.fileExists(atPath: replayPlistURL.path)
-        print(installed ? "replay：已安裝（\(replayPlistURL.path)）" : "replay：未安裝（nibble replay install）")
+        print(installed ? "replay: installed (\(replayPlistURL.path))" : "replay: not installed (nibble replay install)")
         return 0
     }
 }
@@ -586,7 +585,7 @@ func cmdDump() -> Int32 {
     do {
         let tr = try ReceiverTransport.openFirst()
         let devs = discover(tr)
-        guard let hit = devs.first else { print("接收器在，但沒有醒著的裝置"); return 1 }
+        guard let hit = devs.first else { print("Receiver present but no awake device"); return 1 }
         let name = (try? hit.dev.name()) ?? "Unknown"
         print("\(name) · HID++ \(hit.ver.major).\(hit.ver.minor) · device #\(hit.idx)\n")
         print(" idx  feature  flags  name")
@@ -638,20 +637,20 @@ func cmdButtons() -> Int32 {
         if !dev.has(0x1b04), dev.has(0x8110) {
             let n = try dev.buttonSpyCount()
             let map = (try? dev.buttonSpyRemapping(count: n)) ?? []
-            print("\(name) · \(n) buttons（0x8110 MouseButtonSpy——G 系路徑）\n")
+            print("\(name) · \(n) buttons (0x8110 MouseButtonSpy — G-series path)\n")
             print(" btn   spy-remap")
             print(" ----  ---------------")
             for i in 0..<n {
                 let target = i < map.count ? Int(map[i]) : 0
-                let mapped = target == 0 ? "(default)" : (target == i + 1 ? "→ 自己（未改）" : "→ button \(target)")
+                let mapped = target == 0 ? "(default)" : (target == i + 1 ? "→ itself (unchanged)" : "→ button \(target)")
                 print(String(format: " G%-3d  %@", i + 1, mapped as NSString))
             }
-            print("\n （G 系按鍵層 = 0x8110 spy/remap；M5b divert 引擎將用 startSpy 事件流；本指令唯讀）")
+            print("\n (G-series button layer = 0x8110 spy/remap; this command is read-only)")
             return 0
         }
         // 路線一：MX 系（0x1b04 ReprogControlsV4）
         let list = try dev.controls()
-        print("\(name) · \(list.count) controls（0x1b04 裝置自我列舉，非寫死）\n")
+        print("\(name) · \(list.count) controls (0x1b04, enumerated from the device)\n")
         print(" cid     name              pos  divert       reprog  type")
         print(" ------  ----------------  ---  -----------  ------  --------")
         for c in list {
@@ -668,7 +667,7 @@ func cmdButtons() -> Int32 {
                          divert as NSString, (c.reprogrammable ? "yes" : "no") as NSString,
                          type.joined(separator: ",") as NSString))
         }
-        print("\n （divert = 可交給軟體接管；pos = 遊戲鼠實體位置編號；M5b 引擎未上線，本指令唯讀）")
+        print("\n (divert = can be handed to software; pos = physical position on gaming mice; this command is read-only)")
         return 0
     }
 }
@@ -677,11 +676,11 @@ func cmdButtons() -> Int32 {
 
 func cmdSpy(_ args: [String]) -> Int32 {
     withDevice { dev, tr in
-        guard dev.has(0x8110) else { print("此裝置沒有 0x8110（MX 系請等 0x1b04 引擎）"); return 1 }
+        guard dev.has(0x8110) else { print("this device has no 0x8110 (MX-series uses the 0x1b04 path)"); return 1 }
         guard let spyIdx = try dev.featureIndex(of: 0x8110) else { return 1 }
         let n = try dev.buttonSpyCount()
         let seconds = args.first.flatMap(Double.init)   // `nibble spy 15` = 15 秒後自動結束
-        print("spy 開始（\(n) 顆鍵）——按滑鼠按鍵看事件；\(seconds.map { "\(Int($0)) 秒後" } ?? "Ctrl+C ")結束並還原\n")
+        print("spy started (\(n) buttons) — press mouse buttons to see events; \(seconds.map { "stops after \(Int($0))s" } ?? "Ctrl+C to stop")\n")
         try dev.buttonSpyStart()
         var prev: UInt16 = 0
         tr.onReport = { p in
@@ -708,7 +707,7 @@ func cmdSpy(_ args: [String]) -> Int32 {
         }
         tr.onReport = nil
         try? dev.buttonSpyStop()
-        print("\nspy 結束，已還原")
+        print("\nspy stopped, device restored")
         return 0
     }
 }
@@ -717,7 +716,7 @@ func cmdRemap() -> Int32 {
     withDevice { dev, tr in
         let devName = (try? dev.name()) ?? "unknown"
         var bName: String
-        print("按下你要改的滑鼠按鍵…（30 秒逾時）")
+        print("Press the mouse button you want to remap… (30s timeout)")
 
         if dev.has(0x8110) {
             // G 系：spy bitmask
@@ -736,15 +735,15 @@ func cmdRemap() -> Int32 {
             while captured == nil && Date() < deadline { CFRunLoopRunInMode(.defaultMode, 0.2, true) }
             tr.onReport = nil
             try? dev.buttonSpyStop()
-            guard let btn = captured else { print("沒等到按鍵，取消"); return 1 }
-            if btn <= 1 { print("→ 抓到 G\(btn + 1)（左/右鍵）——拒絕改主鍵，防鎖死"); return 1 }
+            guard let btn = captured else { print("no button pressed, cancelled"); return 1 }
+            if btn <= 1 { print("→ got G\(btn + 1) (left/right click) — refusing to remap primary buttons"); return 1 }
             bName = "G\(btn + 1)"
         } else if dev.has(0x1b04) {
             // MX 系：暫時 divert 全部可 divert 的鍵來聽事件，結束一律還原
             guard let fi = try dev.featureIndex(of: 0x1b04) else { return 1 }
             let controls = try dev.controls()
             let divertable = controls.filter(\.divertable)
-            guard !divertable.isEmpty else { print("此裝置沒有可 divert 的按鍵"); return 1 }
+            guard !divertable.isEmpty else { print("this device has no divertable buttons"); return 1 }
             for c in divertable { try? dev.setDivert(cid: c.cid, on: true) }
             var captured: UInt16?
             tr.onReport = { p in
@@ -760,24 +759,24 @@ func cmdRemap() -> Int32 {
             while captured == nil && Date() < deadline { CFRunLoopRunInMode(.defaultMode, 0.2, true) }
             tr.onReport = nil
             for c in divertable { try? dev.setDivert(cid: c.cid, on: false) }
-            guard let cid = captured else { print("沒等到按鍵，取消"); return 1 }
+            guard let cid = captured else { print("no button pressed, cancelled"); return 1 }
             bName = HIDPP.cidNames[cid] ?? String(format: "CID 0x%04X", cid)
         } else {
-            print("此裝置不支援改鍵（無 0x8110／0x1b04）")
+            print("this device does not support remapping (no 0x8110 / 0x1b04)")
             return 1
         }
-        print("→ 抓到 \(bName)")
-        print("動作類型？ [k]快捷鍵 [s]系統動作 [d]還原預設 [x]停用這顆鍵：", terminator: "")
+        print("→ got \(bName)")
+        print("Action type? [k]eystroke [s]ystem action [d]efault [x]disable: ", terminator: "")
         guard let choice = readLine()?.lowercased().first else { return 1 }
         var action: ButtonAction?
         switch choice {
         case "k":
-            print("輸入組合（例 cmd+shift+4 / ctrl+left / f13）：", terminator: "")
-            guard let combo = readLine(), parseCombo(combo) != nil else { print("解析失敗"); return 64 }
+            print("Key combination (e.g. cmd+shift+4 / ctrl+left / f13): ", terminator: "")
+            guard let combo = readLine(), parseCombo(combo) != nil else { print("could not parse that combination"); return 64 }
             action = ButtonAction(type: "keys", keys: combo, action: nil)
         case "s":
-            print("選項：\(SystemAction.allCases.map(\.rawValue).joined(separator: " / ")) / app:名稱")
-            print("輸入：", terminator: "")
+            print("Options: \(SystemAction.allCases.map(\.rawValue).joined(separator: " / ")) / app:Name")
+            print("Enter: ", terminator: "")
             guard let s = readLine(), !s.isEmpty else { return 1 }
             action = ButtonAction(type: "system", keys: nil, action: s)
         case "d":
@@ -794,11 +793,11 @@ func cmdRemap() -> Int32 {
         maps[devName] = devMap.isEmpty ? nil : devMap
         cfg.buttonMaps = maps
         try saveConfig(cfg)
-        let desc = action.map { $0.type == "keys" ? "keys: \($0.keys ?? "")" : $0.type == "disable" ? "停用" : "system: \($0.action ?? "")" } ?? "還原預設"
-        print("✓ \(bName) → \(desc)（已存檔）")
-        print("  生效方式：menubar 常駐時自動載入——重開 menubar 或點選單「重新載入改鍵引擎」")
+        let desc = action.map { $0.type == "keys" ? "keys: \($0.keys ?? "")" : $0.type == "disable" ? "disabled" : "system: \($0.action ?? "")" } ?? "restore default"
+        print("✓ \(bName) → \(desc) (saved)")
+        print("  Takes effect in the menu bar app, which reloads this file automatically")
         if action != nil, action?.type != "disable", !axTrusted() {
-            print("  ⚠️ 尚未授權「輔助使用」——menubar 啟動引擎時會跳授權視窗")
+            print("  ⚠️ Accessibility not granted yet — the menu bar app will prompt when the engine starts")
         }
         return 0
     }

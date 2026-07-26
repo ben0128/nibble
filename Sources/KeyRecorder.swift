@@ -31,8 +31,8 @@ final class KeyRecorderView: NSView {
         path.stroke()
 
         let text = combo.map(prettify)
-            ?? (recording ? L("Press a key combination…", "請按下快捷鍵…")
-                          : L("Click here, then press a key combination", "點這裡，然後按下快捷鍵"))
+            ?? (recording ? "Press a key combination…"
+                          : "Click here, then press a key combination")
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 13, weight: combo == nil ? .regular : .medium),
             .foregroundColor: combo == nil ? NSColor.secondaryLabelColor : NSColor.labelColor,

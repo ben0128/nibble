@@ -59,7 +59,6 @@ Exit codes: `0` ok · `1` no awake device or value not applied · `2` transport/
 
 **For scripts and agents:** `--json` works on every read command (`status`, `battery`, `dump`, `buttons`, `onboard info`, `doctor`, `version`). Errors also emit JSON: `{"error": "...", "code": "no-awake-device"}`. `doctor --json` returns `{"ok": bool, "failed": n, "checks": [...], "nextStep": "<command or setting to fix first>"}` — the fastest path from "it doesn't work" to a concrete fix.
 
-The UI follows the system language: English by default, Chinese when the system is set to Chinese.
 
 ## Config file `~/.config/nibble.json`
 
@@ -118,19 +117,11 @@ Sources/MenuBar.swift         interactive NSStatusItem menu (opt-in resident)
 Sources/SettingsWindow.swift  native AppKit settings panel (quits on close)
 Sources/ButtonsPane.swift     Buttons tab: device-enumerated remap table
 Sources/KeyRecorder.swift     press-a-key shortcut recorder
-Sources/L10n.swift            bilingual strings + --json output
+Sources/L10n.swift            --json output + machine-readable errors
 Sources/main.swift            argv dispatch
 ```
 
 Protocol notes for G-series: battery is `0x1001` BatteryVoltage (millivolts + LiPo curve), not `0x1000`/`0x1004`. Onboard sectors are 255 B (not 16-aligned) — read the tail with an overlapping read at `sectorSize-16`.
-
-## 中文速覽
-
-macOS 原生、零依賴的羅技滑鼠控制工具，系統語言為中文時介面自動顯示中文。
-
-首次執行：系統設定 → 隱私權與安全性 → 輸入監控 → 授權你的終端機。**卡住就先跑 `nibble doctor`**，它會逐項檢查權限、接收器、裝置、設定檔、改鍵引擎，並直接告訴你怎麼修。
-
-所有寫入皆為 runtime（滑鼠斷電即回復），`nibble replay install` 會在登入時自動重放你的設定。介面有兩套：`nibble menubar` 互動選單列（同時是改鍵引擎宿主），`nibble ui` 關窗即退的原生設定面板。
 
 ## License
 

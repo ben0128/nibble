@@ -13,12 +13,12 @@ func runSettingsUI() -> Int32 {
 
 final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var window: NSWindow!
-    private let deviceLabel = NSTextField(labelWithString: "偵測中…")
+    private let deviceLabel = NSTextField(labelWithString: "Detecting…")
     private let batteryLabel = NSTextField(labelWithString: "")
     private let dpiValue = NSTextField(labelWithString: "–")
     private let dpiSlider = NSSlider(value: 1600, minValue: 100, maxValue: 6400, target: nil, action: nil)
     private let rateControl = NSSegmentedControl(labels: ["125", "250", "500", "1000"], trackingMode: .selectOne, target: nil, action: nil)
-    private let rgbControl = NSSegmentedControl(labels: ["關燈 ⚡", "Cycle", "Breathing"], trackingMode: .selectOne, target: nil, action: nil)
+    private let rgbControl = NSSegmentedControl(labels: ["Off ⚡", "Cycle", "Breathing"], trackingMode: .selectOne, target: nil, action: nil)
     private let statusLabel = NSTextField(labelWithString: " ")
     private var lastIndex: UInt8 = 1
     private var lastRGB: String?
@@ -45,15 +45,15 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         dpiRow.spacing = 10
         dpiSlider.widthAnchor.constraint(equalToConstant: 260).isActive = true
 
-        let saveBtn = NSButton(title: "存為預設", target: self, action: #selector(saveAction))
-        let applyBtn = NSButton(title: "套用設定檔", target: self, action: #selector(applyAction))
+        let saveBtn = NSButton(title: "Save as default", target: self, action: #selector(saveAction))
+        let applyBtn = NSButton(title: "Apply config file", target: self, action: #selector(applyAction))
         let btnRow = NSStackView(views: [saveBtn, applyBtn])
         btnRow.spacing = 8
 
         let generalStack = NSStackView(views: [
             sectionLabel("DPI"), dpiRow,
-            sectionLabel("回報率（Hz）"), rateControl,
-            sectionLabel("燈效（runtime，斷電回復）"), rgbControl,
+            sectionLabel("Report rate (Hz)"), rateControl,
+            sectionLabel("Lighting (runtime — reverts on power cycle)"), rgbControl,
             NSBox(), btnRow,
         ])
         generalStack.orientation = .vertical
@@ -127,7 +127,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             deviceLabel.stringValue = (try? dev.name()) ?? "Logitech #\(lastIndex)"
             if let b = try? dev.battery() {
                 let volt = b.millivolts.map { String(format: " · %.2fV", Double($0) / 1000) } ?? ""
-                batteryLabel.stringValue = "🔋 \(b.percent)%\(volt) · \(b.charging ? "充電中 ⚡" : "放電中")"
+                batteryLabel.stringValue = "🔋 \(b.percent)%\(volt) · \(b.charging ? "charging ⚡" : "discharging")"
             }
             if let dpi = try? dev.currentDPI() {
                 dpiSlider.integerValue = dpi
@@ -136,10 +136,10 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             if let hz = try? dev.reportRateHz(), let i = Self.rateValues.firstIndex(of: hz) {
                 rateControl.selectedSegment = i
             }
-            statusLabel.stringValue = "就緒（所有變更即時寫入，寫後回讀驗證）"
+            statusLabel.stringValue = "Ready — every change writes immediately and is verified by read-back"
         } catch {
-            deviceLabel.stringValue = "滑鼠離線／睡眠中"
-            batteryLabel.stringValue = "晃兩下滑鼠後重開面板"
+            deviceLabel.stringValue = "Mouse offline or asleep"
+            batteryLabel.stringValue = "Move the mouse, then reopen this panel"
             statusLabel.stringValue = "❌ \(error)"
         }
     }
@@ -154,7 +154,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             var got = 0
             try uiHostFallback(dev) { got = try dev.setDPI(snapped) }
             dpiValue.stringValue = "\(got)"
-            statusLabel.stringValue = got == snapped ? "DPI → \(got) ✓" : "⚠️ 要求 \(snapped)，回讀 \(got)"
+            statusLabel.stringValue = got == snapped ? "DPI → \(got) ✓" : "⚠️ asked \(snapped), device reports \(got)"
         } catch { statusLabel.stringValue = "❌ \(error)" }
     }
 
@@ -165,7 +165,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             let dev = try openDevice()
             var got = 0
             try uiHostFallback(dev) { got = try dev.setReportRateHz(hz) }
-            statusLabel.stringValue = got == hz ? "回報率 → \(got) Hz ✓" : "⚠️ 要求 \(hz)，回讀 \(got)"
+            statusLabel.stringValue = got == hz ? "Report rate → \(got) Hz ✓" : "⚠️ asked \(hz), device reports \(got)"
         } catch { statusLabel.stringValue = "❌ \(error)" }
     }
 
@@ -176,7 +176,7 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             let dev = try openDevice()
             let applied = try uiSetRGB(dev, kind: kind)
             lastRGB = kind
-            statusLabel.stringValue = applied > 0 ? "RGB → \(kind) ✓" : "⚠️ 裝置沒有這個燈效"
+            statusLabel.stringValue = applied > 0 ? "Lighting → \(kind) ✓" : "⚠️ effect not available on this device"
         } catch { statusLabel.stringValue = "❌ \(error)" }
     }
 
@@ -184,13 +184,13 @@ final class SettingsDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         do {
             let dev = try openDevice()
             try uiSaveConfig(dev, rgb: lastRGB)
-            statusLabel.stringValue = "已存為預設 ✓ 登入時自動重放（nibble replay）"
+            statusLabel.stringValue = "Saved as default ✓ replayed at login (nibble replay)"
         } catch { statusLabel.stringValue = "❌ \(error)" }
     }
 
     @objc private func applyAction() {
         _ = cmdApply()
         loadState()
-        statusLabel.stringValue = "設定檔已套用 ✓"
+        statusLabel.stringValue = "Config applied ✓"
     }
 }

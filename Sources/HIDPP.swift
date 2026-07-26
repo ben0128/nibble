@@ -74,11 +74,11 @@ public enum HIDPPError: Error, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .timeout: return "等不到裝置回應（timeout）"
-        case .deviceOffline(let c): return "裝置離線或睡眠中（err 0x\(String(format: "%02X", c))）——晃兩下滑鼠再試"
-        case .receiverError(let c): return "接收器錯誤 0x\(String(format: "%02X", c))"
-        case .protocolError(let c): return "HID++ 協定錯誤 0x\(String(format: "%02X", c))"
-        case .featureUnsupported(let f): return "裝置不支援 feature 0x\(String(format: "%04X", f))"
+        case .timeout: return "device did not respond (timeout)"
+        case .deviceOffline(let c): return "device offline or asleep (err 0x\(String(format: "%02X", c))) — move the mouse and retry"
+        case .receiverError(let c): return "receiver error 0x\(String(format: "%02X", c))"
+        case .protocolError(let c): return "HID++ protocol error 0x\(String(format: "%02X", c))"
+        case .featureUnsupported(let f): return "device does not support feature 0x\(String(format: "%04X", f))"
         case .transport(let m): return m
         }
     }
@@ -322,7 +322,7 @@ public final class HIDPPDevice {
 
     public enum OnboardMode: UInt8, CustomStringConvertible {
         case onboard = 1, host = 2
-        public var description: String { self == .onboard ? "onboard（板載 profile 主導）" : "host（軟體 runtime 主導）" }
+        public var description: String { self == .onboard ? "onboard (device profile in charge)" : "host (software runtime in charge)" }
     }
 
     public func onboardMode() throws -> OnboardMode {
@@ -395,12 +395,12 @@ public final class HIDPPDevice {
             let effects = rgbZoneEffects(zone: UInt8(z))
             if let off = effects.first(where: { $0.effectID == 0x0000 }) {
                 try rgbSetZone(zone: UInt8(z), slot: off.slot)
-                log.append("zone \(z): off（slot \(off.slot)）")
+                log.append("zone \(z): off (slot \(off.slot))")
             } else if let fixed = effects.first(where: { $0.effectID == 0x0001 }) {
                 try rgbSetZone(zone: UInt8(z), slot: fixed.slot, effectParams: [0, 0, 0])
-                log.append("zone \(z): fixed 黑色（slot \(fixed.slot)）")
+                log.append("zone \(z): fixed black (slot \(fixed.slot))")
             } else {
-                log.append("zone \(z): 找不到 off/fixed 效果，跳過（\(effects.count) 個 slot）")
+                log.append("zone \(z): no off/fixed effect, skipped (\(effects.count) slots)")
             }
         }
         return log

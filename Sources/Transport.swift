@@ -27,13 +27,13 @@ public final class ReceiverTransport: HIDPPTransport {
         let mo = IOHIDManagerOpen(mgr, IOOptionBits(kIOHIDOptionsTypeNone))
         guard mo == kIOReturnSuccess else {
             if mo == kIOReturnNotPermitted {
-                throw HIDPPError.transport("沒有「輸入監控」權限：系統設定 → 隱私權與安全性 → 輸入監控，打開你的終端機後重跑")
+                throw HIDPPError.transport("Input Monitoring permission required: System Settings > Privacy & Security > Input Monitoring, enable this app, then rerun")
             }
-            throw HIDPPError.transport(String(format: "IOHIDManagerOpen 失敗 0x%08X", UInt32(bitPattern: mo)))
+            throw HIDPPError.transport(String(format: "IOHIDManagerOpen failed 0x%08X", UInt32(bitPattern: mo)))
         }
         let objs = (IOHIDManagerCopyDevices(mgr) as NSSet?)?.allObjects ?? []
         guard let first = objs.first else {
-            throw HIDPPError.transport("找不到羅技接收器（vendor 0x046D / usage page 0xFF00）——接收器有插著嗎？")
+            throw HIDPPError.transport("no Logitech receiver found (vendor 0x046D / usage page 0xFF00) — is it plugged in?")
         }
         return try ReceiverTransport(manager: mgr, device: first as! IOHIDDevice)
     }
@@ -45,7 +45,7 @@ public final class ReceiverTransport: HIDPPTransport {
         self.inBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: 64)
         let od = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
         guard od == kIOReturnSuccess else {
-            throw HIDPPError.transport(String(format: "IOHIDDeviceOpen 失敗 0x%08X（輸入監控權限？）", UInt32(bitPattern: od)))
+            throw HIDPPError.transport(String(format: "IOHIDDeviceOpen failed 0x%08X (Input Monitoring permission?)", UInt32(bitPattern: od)))
         }
         let ctx = Unmanaged.passUnretained(self).toOpaque()
         IOHIDDeviceRegisterInputReportCallback(device, inBuf, 64, ReceiverTransport.reportCB, ctx)
@@ -83,7 +83,7 @@ public final class ReceiverTransport: HIDPPTransport {
         if debug { print("→ id=0x\(String(format: "%02X", id)) [\(hex(Array(buf.dropFirst())))]") }
         let r = IOHIDDeviceSetReport(device, kIOHIDReportTypeOutput, CFIndex(id), &buf, buf.count)
         guard r == kIOReturnSuccess else {
-            throw HIDPPError.transport(String(format: "SetReport 失敗 0x%08X", UInt32(bitPattern: r)))
+            throw HIDPPError.transport(String(format: "SetReport failed 0x%08X", UInt32(bitPattern: r)))
         }
     }
 

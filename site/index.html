@@ -136,8 +136,10 @@
       font: 600 .82rem var(--mono);
     }
     .bar.ghub { width: 100%; background: linear-gradient(90deg, #232B3A, #2C3547); color: var(--soft); justify-content: flex-end; padding-right: 12px; }
+    .bar.opt { width: 19.5%; background: linear-gradient(90deg, #232B3A, #2C3547); }
     .bar.nib { width: 3px; min-width: 3px; background: var(--accent); box-shadow: 0 0 12px rgba(70, 232, 160, .8); }
     .bar-track .after-label { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font: 600 .82rem var(--mono); color: var(--accent); white-space: nowrap; }
+    .bar-track .after-label.dim { left: calc(19.5% + 12px); color: var(--soft); }
     .bars-note { font-size: .85rem; color: var(--soft); margin-top: 4px; }
 
     /* feature cards */
@@ -285,6 +287,10 @@
         <div class="bar-row">
           <span class="bar-name">G HUB</span>
           <div class="bar-track"><div class="bar ghub">4 GB</div></div>
+        </div>
+        <div class="bar-row">
+          <span class="bar-name">Options+</span>
+          <div class="bar-track"><div class="bar opt"></div><span class="after-label dim">~800 MB</span></div>
         </div>
         <div class="bar-row">
           <span class="bar-name">Nibble</span>
