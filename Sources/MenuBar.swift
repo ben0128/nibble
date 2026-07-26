@@ -28,6 +28,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var refreshing = false
     private var settingsProcess: Process?
     private var engineNeedsAX = false
+    private var engineRetryScheduled = false
     private var configWatch: DispatchSourceFileSystemObject?
     private var flashWork: DispatchWorkItem?
     private var batteryPercent: Int?
@@ -169,7 +170,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         engineItem.target = nil
         guard let maps = loadConfig()?.buttonMaps, !maps.isEmpty else {
             engineItem.title = "Remapping: none configured"
-            EngineState.write(["active": false, "reason": "no mappings configured", "mappings": 0])
+            EngineState.write(["active": false, "reason": "no mappings configured", "mappings": 0, "axTrusted": axTrusted()])
             return
         }
         do {
@@ -177,7 +178,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let devName = (try? dev.name()) ?? "unknown"
             guard let devMap = maps[devName], !devMap.isEmpty else {
                 engineItem.title = "Remapping: none for \(devName)"
-                EngineState.write(["active": false, "reason": "no mappings for \(devName)", "mappings": 0])
+                EngineState.write(["active": false, "reason": "no mappings for \(devName)", "mappings": 0, "axTrusted": axTrusted()])
                 return
             }
             let needsAX = devMap.values.contains { $0.type == "keys" || $0.type == "system" }
@@ -190,13 +191,14 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 EngineState.write(["active": false, "reason": "Accessibility permission not granted",
                                    "mappings": devMap.count, "axTrusted": false,
                                    "fix": "System Settings > Privacy & Security > Accessibility > add Nibble.app"])
+                scheduleEngineRetry()
                 return
             }
             guard let tr = dev.transport as? ReceiverTransport,
                   let eng = makeRemapEngine(transport: tr, dev: dev, savedMap: devMap) else {
                 engineItem.title = "Remapping: unsupported device"
                 EngineState.write(["active": false, "reason": "device exposes neither 0x8110 nor 0x1b04",
-                                   "mappings": devMap.count])
+                                   "mappings": devMap.count, "axTrusted": axTrusted()])
                 return
             }
             try eng.start()
@@ -207,7 +209,20 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                "path": dev.has(0x8110) ? "0x8110 spy" : "0x1b04 divert"])
         } catch {
             engineItem.title = "Remapping: ❌ \(error)"
-            EngineState.write(["active": false, "reason": "\(error)"])
+            EngineState.write(["active": false, "reason": "\(error)", "axTrusted": axTrusted(),
+                               "mappings": maps.values.reduce(0) { $0 + $1.count }])
+            scheduleEngineRetry()
+        }
+    }
+
+    /// 啟動失敗（裝置睡著、被其他程序佔用、剛授權完）→ 排一次延遲重試，不必使用者手動
+    private func scheduleEngineRetry() {
+        guard !engineRetryScheduled else { return }
+        engineRetryScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            self?.engineRetryScheduled = false
+            guard let self, self.engine == nil else { return }
+            self.startEngine()
         }
     }
 
@@ -296,6 +311,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 notifyLowBatteryIfNeeded(percent: b.percent, charging: b.charging, device: deviceItem.title)
             }
             syncChecks(dev)
+            if engine == nil, let maps = loadConfig()?.buttonMaps, !maps.isEmpty { startEngine() }
         } catch let e as HIDPPError {
             if case .transport(let msg) = e, msg.contains("Input Monitoring") {
                 batteryPercent = nil
