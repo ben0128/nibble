@@ -1,13 +1,27 @@
 // Commands.swift — 指令層：status / battery / dump
 import Foundation
 
-/// 掃描接收器下掛的裝置索引 1–6（空索引接收器會秒回錯誤，睡眠裝置吃 timeout）
-func discover(_ tr: HIDPPTransport, maxIndex: UInt8 = 6)
+/// 掃描一個 transport 上的裝置：接收器探測下掛索引 1–6，直連（藍牙）固定 0xFF
+func discover(_ tr: ReceiverTransport, maxIndex: UInt8 = 6)
     -> [(idx: UInt8, dev: HIDPPDevice, ver: (major: Int, minor: Int))] {
     var out: [(idx: UInt8, dev: HIDPPDevice, ver: (major: Int, minor: Int))] = []
+    if tr.isDirect {
+        let d = HIDPPDevice(transport: tr, index: 0xFF)
+        if let v = try? d.ping(timeout: 0.8) { out.append((0xFF, d, v)) }
+        return out
+    }
     for i in 1...maxIndex {
         let d = HIDPPDevice(transport: tr, index: i)
         if let v = try? d.ping(timeout: 0.6) { out.append((i, d, v)) }
+    }
+    return out
+}
+
+/// 走遍所有 transport（接收器優先），回傳所有醒著的裝置
+func discoverEverything() throws -> [(idx: UInt8, dev: HIDPPDevice, tr: ReceiverTransport, ver: (major: Int, minor: Int))] {
+    var out: [(idx: UInt8, dev: HIDPPDevice, tr: ReceiverTransport, ver: (major: Int, minor: Int))] = []
+    for tr in try ReceiverTransport.openAll() {
+        for hit in discover(tr) { out.append((hit.idx, hit.dev, tr, hit.ver)) }
     }
     return out
 }
@@ -28,13 +42,13 @@ private func batteryBar(_ percent: Int) -> String {
 func cmdStatus() -> Int32 {
     let t0 = Date()
     do {
-        let tr = try ReceiverTransport.openFirst()
-        let devs = discover(tr)
+        let devs = try discoverEverything()
         guard let hit = devs.first else {
-            emitError("receiver present (PID 0x\(String(format: "%04X", tr.productID))) but no awake device — move the mouse and retry",
+            emitError("transport present but no awake device — move the mouse and retry",
                       code: "no-awake-device")
             return 1
         }
+        let tr = hit.tr
         if jsonMode {
             let b = try? hit.dev.battery()
             emitJSON([
@@ -62,7 +76,10 @@ func cmdStatus() -> Int32 {
 
         print("Nibble v\(NIBBLE_VERSION) ── \(name)")
         print(rule)
-        print(" link      HID++ \(hit.ver.major).\(hit.ver.minor) · receiver 046D:\(String(format: "%04X", tr.productID)) · device #\(hit.idx)")
+        let linkDesc = tr.isDirect
+            ? "bluetooth-direct 046D:\(String(format: "%04X", tr.productID))\(tr.longOnly ? " · BLE long-only" : "")"
+            : "receiver 046D:\(String(format: "%04X", tr.productID)) · device #\(hit.idx)"
+        print(" link      HID++ \(hit.ver.major).\(hit.ver.minor) · \(linkDesc)")
         if let b = try? dev.battery() {
             let volt = b.millivolts.map { String(format: "%.2fV  ", Double($0) / 1000) } ?? ""
             print(" battery   \(batteryBar(b.percent)) \(b.percent)%  \(volt)\(b.charging ? "charging ⚡" : "discharging")  (\(b.source))")
@@ -91,8 +108,7 @@ func cmdStatus() -> Int32 {
 
 func cmdBattery() -> Int32 {
     do {
-        let tr = try ReceiverTransport.openFirst()
-        guard let hit = discover(tr).first else {
+        guard let hit = try discoverEverything().first else {
             emitError("no awake device", code: "no-awake-device")
             return 1
         }
@@ -123,29 +139,32 @@ func cmdDoctor() -> Int32 {
         if ok == false, firstFix == nil { firstFix = fix }
     }
 
-    var transport: ReceiverTransport?
+    var transports: [ReceiverTransport] = []
     do {
-        let tr = try ReceiverTransport.openFirst()
-        transport = tr
+        transports = try ReceiverTransport.openAll()
         add("input-monitoring", true, "granted")
-        add("receiver", true, String(format: "046D:%04X", tr.productID))
+        let desc = transports.map {
+            String(format: "%@ 046D:%04X", $0.isDirect ? "bluetooth" : "receiver", $0.productID)
+        }.joined(separator: " · ")
+        add("transports", true, desc)
     } catch {
         let msg = "\(error)"
         if msg.contains("Input Monitoring") || msg.contains("E00002E2") {
             add("input-monitoring", false, msg,
                 fix: "System Settings > Privacy & Security > Input Monitoring > enable your terminal (or Nibble.app), then rerun")
-            add("receiver", nil, "skipped — cannot open HID without permission")
+            add("transports", nil, "skipped — cannot open HID without permission")
         } else {
             add("input-monitoring", nil, "unknown")
-            add("receiver", false, msg, fix: "Plug the Logitech USB receiver in (vendor 046D, HID usage page 0xFF00)")
+            add("transports", false, msg, fix: "Plug in the USB receiver or connect the mouse over Bluetooth")
         }
     }
 
-    if let tr = transport {
-        let devs = discover(tr, maxIndex: 3)
-        if let hit = devs.first {
+    if !transports.isEmpty {
+        let devs = transports.flatMap { tr in discover(tr, maxIndex: 3).map { ($0.idx, $0.dev, tr, $0.ver) } }
+        if let hit = devs.map({ (idx: $0.0, dev: $0.1, tr: $0.2, ver: $0.3) }).first {
             let name = (try? hit.dev.name()) ?? "unknown"
-            add("device", true, "\(name) · HID++ \(hit.ver.major).\(hit.ver.minor) · index \(hit.idx)")
+            add("device", true, "\(name) · HID++ \(hit.ver.major).\(hit.ver.minor) · \(hit.tr.isDirect ? "bluetooth" : "index \(hit.idx)")")
+            if devs.count > 1 { add("more-devices", nil, "\(devs.count - 1) more awake device(s) found") }
             if let b = try? hit.dev.battery() {
                 add("battery", b.percent > 10 || b.charging, "\(b.percent)% \(b.charging ? "charging" : "discharging") (\(b.source))",
                     fix: b.percent <= 10 && !b.charging ? "Charge the mouse" : nil)
@@ -155,7 +174,7 @@ func cmdDoctor() -> Int32 {
                 hit.dev.has(0x8110) ? "0x8110 MouseButtonSpy (G-series)" :
                 hit.dev.has(0x1b04) ? "0x1b04 ReprogControlsV4 (MX-series)" : "neither feature present")
         } else {
-            add("device", false, "receiver present but no awake device", fix: "Move the mouse to wake it, then rerun")
+            add("device", false, "transport present but no awake device", fix: "Move the mouse to wake it, then rerun")
         }
     }
 
@@ -543,13 +562,17 @@ func cmdReplay(_ args: [String]) -> Int32 {
 
 // MARK: - UI 共用助手（menubar 與 settings window 共用）
 
-/// 先試偏好索引（0.4s 快 ping），失敗才掃 1–3
+/// 先在第一個 transport 試偏好索引（0.4s 快 ping），失敗才走遍全部（含藍牙直連）
 func uiOpenDevice(preferred: UInt8) throws -> (dev: HIDPPDevice, index: UInt8) {
-    let tr = try ReceiverTransport.openFirst()
-    let d = HIDPPDevice(transport: tr, index: preferred)
-    if (try? d.ping(timeout: 0.4)) != nil { return (d, preferred) }
-    guard let hit = discover(tr, maxIndex: 3).first else { throw HIDPPError.timeout }
-    return (hit.dev, hit.idx)
+    let transports = try ReceiverTransport.openAll()
+    if let first = transports.first, !first.isDirect {
+        let d = HIDPPDevice(transport: first, index: preferred)
+        if (try? d.ping(timeout: 0.4)) != nil { return (d, preferred) }
+    }
+    for tr in transports {
+        if let hit = discover(tr, maxIndex: 3).first { return (hit.dev, hit.idx) }
+    }
+    throw HIDPPError.timeout
 }
 
 /// runtime 寫入被 onboard 模式擋下時切 host 重試（旗標，斷電自動回復）
