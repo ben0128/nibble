@@ -9,10 +9,25 @@ enum EngineState {
     static let url = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".config/nibble/engine.json")
 
+    /// 狀態鍵每次整組換掉——用合併的話舊值會殘留（例如成功後還掛著上一次的 fix）
+    private static let statusKeys = ["active", "reason", "mappings", "axTrusted", "device", "path", "fix"]
+
+    static func writeStatus(_ fields: [String: Any]) {
+        var payload = read()
+        for k in statusKeys { payload.removeValue(forKey: k) }
+        for (k, v) in fields { payload[k] = v }
+        payload["updated"] = ISO8601DateFormatter().string(from: Date())
+        persist(payload)
+    }
+
     static func write(_ fields: [String: Any]) {
         var payload = read()
         for (k, v) in fields { payload[k] = v }
         payload["updated"] = ISO8601DateFormatter().string(from: Date())
+        persist(payload)
+    }
+
+    private static func persist(_ payload: [String: Any]) {
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         if let d = try? JSONSerialization.data(withJSONObject: payload,
@@ -184,17 +199,23 @@ final class RemapEngine: RemapEngineProtocol {
         let newly = mask & ~prevMask
         prevMask = mask
         guard newly != 0 else { return }
+        let stamp = ISO8601DateFormatter().string(from: Date())
         for bit in 0..<16 where newly & (1 << bit) != 0 {
-            let mapped = mappings[bit]
-            if let a = mapped { performButtonAction(a) }
-            if Date().timeIntervalSince(lastLog) > 1 {
+            if let a = mappings[bit] {
+                performButtonAction(a)
+                EngineState.write([
+                    "lastFiredButton": "G\(bit + 1)",
+                    "lastFiredBit": bit,
+                    "lastFiredAction": a.type == "keys" ? (a.keys ?? "") : (a.action ?? a.type),
+                    "lastFiredAt": stamp,
+                ])
+            } else if Date().timeIntervalSince(lastLog) > 1 {
                 lastLog = Date()
                 EngineState.write([
-                    "lastEventMask": String(format: "0x%04X", mask),
-                    "lastEventBit": bit,
                     "lastEventButton": "G\(bit + 1)",
-                    "lastEventMapped": mapped != nil,
-                    "lastEventAction": mapped.map { $0.type == "keys" ? ($0.keys ?? "") : ($0.action ?? $0.type) } as Any,
+                    "lastEventBit": bit,
+                    "lastEventMask": String(format: "0x%04X", mask),
+                    "lastEventAt": stamp,
                 ])
             }
         }

@@ -170,7 +170,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         engineItem.target = nil
         guard let maps = loadConfig()?.buttonMaps, !maps.isEmpty else {
             engineItem.title = "Remapping: none configured"
-            EngineState.write(["active": false, "reason": "no mappings configured", "mappings": 0, "axTrusted": axTrusted()])
+            EngineState.writeStatus(["active": false, "reason": "no mappings configured", "mappings": 0, "axTrusted": axTrusted()])
             return
         }
         do {
@@ -178,7 +178,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let devName = (try? dev.name()) ?? "unknown"
             guard let devMap = maps[devName], !devMap.isEmpty else {
                 engineItem.title = "Remapping: none for \(devName)"
-                EngineState.write(["active": false, "reason": "no mappings for \(devName)", "mappings": 0, "axTrusted": axTrusted()])
+                EngineState.writeStatus(["active": false, "reason": "no mappings for \(devName)", "mappings": 0, "axTrusted": axTrusted()])
                 return
             }
             let needsAX = devMap.values.contains { $0.type == "keys" || $0.type == "system" }
@@ -188,7 +188,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 engineItem.title = "Remapping: ⚠️ needs Accessibility — click here"
                 engineItem.action = #selector(openAccessibility)
                 engineItem.target = self
-                EngineState.write(["active": false, "reason": "Accessibility permission not granted",
+                EngineState.writeStatus(["active": false, "reason": "Accessibility permission not granted",
                                    "mappings": devMap.count, "axTrusted": false,
                                    "fix": "System Settings > Privacy & Security > Accessibility > add Nibble.app"])
                 scheduleEngineRetry()
@@ -197,19 +197,19 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let tr = dev.transport as? ReceiverTransport,
                   let eng = makeRemapEngine(transport: tr, dev: dev, savedMap: devMap) else {
                 engineItem.title = "Remapping: unsupported device"
-                EngineState.write(["active": false, "reason": "device exposes neither 0x8110 nor 0x1b04",
+                EngineState.writeStatus(["active": false, "reason": "device exposes neither 0x8110 nor 0x1b04",
                                    "mappings": devMap.count, "axTrusted": axTrusted()])
                 return
             }
             try eng.start()
             engine = eng   // engine 持有 dev+transport → 事件流常駐
             engineItem.title = "Remapping: ✓ \(eng.mappingCount) active"
-            EngineState.write(["active": true, "reason": "running", "mappings": eng.mappingCount,
+            EngineState.writeStatus(["active": true, "reason": "running", "mappings": eng.mappingCount,
                                "axTrusted": axTrusted(), "device": devName,
                                "path": dev.has(0x8110) ? "0x8110 spy" : "0x1b04 divert"])
         } catch {
             engineItem.title = "Remapping: ❌ \(error)"
-            EngineState.write(["active": false, "reason": "\(error)", "axTrusted": axTrusted(),
+            EngineState.writeStatus(["active": false, "reason": "\(error)", "axTrusted": axTrusted(),
                                "mappings": maps.values.reduce(0) { $0 + $1.count }])
             scheduleEngineRetry()
         }

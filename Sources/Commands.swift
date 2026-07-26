@@ -171,10 +171,13 @@ func cmdDoctor() -> Int32 {
         let reason = st["reason"] as? String ?? "menu bar app has not reported yet"
         add("remap-engine", active, active ? "running · \(st["mappings"] as? Int ?? 0) mapping(s) · \(st["path"] as? String ?? "")" : reason,
             fix: active ? nil : (st["fix"] as? String ?? "start the menu bar app: open Nibble.app"))
+        if let fired = st["lastFiredButton"] as? String {
+            add("last-remap-fired", nil,
+                "\(fired) → \(st["lastFiredAction"] as? String ?? "?") at \(st["lastFiredAt"] as? String ?? "?")")
+        }
         if let last = st["lastEventButton"] as? String {
-            let mapped = st["lastEventMapped"] as? Bool ?? false
-            add("last-button-event", nil,
-                "\(last) (bit \(st["lastEventBit"] as? Int ?? -1), mask \(st["lastEventMask"] as? String ?? "?")) → \(mapped ? "fired \(st["lastEventAction"] as? String ?? "")" : "no mapping on this button")")
+            add("last-unmapped-press", nil,
+                "\(last) (bit \(st["lastEventBit"] as? Int ?? -1), mask \(st["lastEventMask"] as? String ?? "?"))")
         }
     }
 
