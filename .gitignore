@@ -2,3 +2,4 @@ nibble
 .DS_Store
 
 Nibble.app/
+.build/
