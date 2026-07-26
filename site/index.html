@@ -115,7 +115,7 @@
     .term-bar i:nth-child(1) { background: #F7605A; } .term-bar i:nth-child(2) { background: #FBBD2E; } .term-bar i:nth-child(3) { background: #35C749; }
     .term-bar span { margin-left: auto; font: 500 .74rem var(--mono); color: var(--soft); }
     .term pre {
-      margin: 0; padding: 18px 20px 22px; line-height: 1.75; overflow-x: auto;
+      margin: 0; padding: 18px 20px 22px; line-height: 1.6; overflow-x: auto;
       height: 340px; overflow-y: auto;             /* fixed card height: new lines scroll, the card never grows */
       scrollbar-width: thin; scrollbar-color: var(--line) transparent;
     }
@@ -123,6 +123,7 @@
     .term pre::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
     .term pre::-webkit-scrollbar-track { background: transparent; }
     .t-line { display: block; white-space: pre; }
+    .t-line.gap { height: .6em; }
     .t-line.hide { display: none; }
     .p { color: var(--accent); }        /* prompt $ */
     .c { color: var(--ink); }           /* typed command */
@@ -281,10 +282,10 @@
 <span class="t-line o"><span class="k">dpi</span>       <span class="v">1600</span></span>
 <span class="t-line o"><span class="k">rate</span>      <span class="v">1000 Hz</span></span>
 <span class="t-line o"><span class="k">mode</span>      <span class="v">host</span></span>
-<span class="t-line">&nbsp;</span>
+<span class="t-line gap"></span>
 <span class="t-line"><span class="p">$</span> <span class="c">nibble dpi 3200</span></span>
 <span class="t-line o"><span class="ok">dpi 3200 ✓</span>  <span>read back from device</span></span>
-<span class="t-line">&nbsp;</span>
+<span class="t-line gap"></span>
 <span class="t-line"><span class="p">$</span> <span class="c">nibble battery</span></span>
 <span class="t-line o">50% 3.85V charging</span>
 <span class="t-line"><span class="p">$</span> <span class="cursor"></span></span></pre>
