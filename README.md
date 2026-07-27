@@ -1,6 +1,6 @@
 # Nibble 🖱️
 
-Lightweight, zero-dependency Logitech mouse control for macOS. Single binary, under 1 MB. No daemon, no telemetry, no account.
+Lightweight, zero-dependency Logitech mouse control for macOS. Single binary, an under-1-MB download. No daemon, no telemetry, no account.
 
 **Site:** [nibble-45j.pages.dev](https://nibble-45j.pages.dev)
 
@@ -68,7 +68,7 @@ If remaps do nothing, run `nibble doctor` — it reports whether the engine is r
 | `nibble startup [on\|off]` | Start the menu bar at login (needs `/Applications/Nibble.app`) |
 | `nibble buttons` | Enumerate programmable buttons (0x1b04 MX-series / 0x8110 G-series) |
 | `nibble spy [seconds]` | Live button-event monitor, G-series diagnostic; auto-stops after N seconds |
-| `nibble remap` | Interactive remap: press a physical button → assign keystroke / system action / disable |
+| `nibble remap` | Interactive remap: press a physical button → assign keystroke / macro / system action / disable |
 | `nibble profile [list\|use\|new\|copy\|rename\|delete]` | Switch between sets of button mappings |
 | `nibble menubar` | Interactive menu bar: battery + DPI/rate/RGB controls; hosts the remap engine (~15 MB, opt-in) |
 | `Nibble.app` | Same as `nibble menubar` but launched from Finder; the bundle also enables low-battery notifications |

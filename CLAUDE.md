@@ -26,3 +26,23 @@ The app is ad-hoc signed (no Developer ID, no notarization). Consequences: every
 - Cask (recommended): app + CLI — the `binary` stanza links the executable inside the bundle.
 - Formula: CLI only, built from source.
 - Installing both clashes on the `/opt/homebrew/bin/nibble` link.
+
+## More Homebrew 6 traps (all hit in practice)
+
+- Third-party taps must be trusted before install: `brew trust ben0128/nibble`. The install docs include this line on purpose.
+- The formula must **not** declare `depends_on xcode: :build` — `swiftc` from Command Line Tools builds this project fine, and the declaration blocks CLT-only machines entirely.
+- `brew install --formula ./local-file.rb` was removed. To test a formula/cask locally: `brew tap-new <user>/test`, copy the file in, install from there.
+
+## Windows port (built, unreleased — beta)
+
+- Code lives in `windows/` (Rust): `nibble-core` is the protocol layer, judged by the shared vectors in `docs/fixtures/`; `nibble-win` has the transport, CLI and tray. CI builds both exes and exercises the no-device paths (exit codes, error JSON, doctor) on real Windows.
+- **Release gate: no binary ships before it has touched a real mouse.** The hardware checklist is `windows/spike/README.md` §5 — run the `nibble-win-x64` CI artifact against a G502 in a VM with the receiver passed through. Until it passes: no `win-v0.1.0` tag, no Scoop bucket. The prepared Scoop manifest with its release procedure is `windows/scoop/nibble.json` (hash intentionally unfilled).
+- The landing page shows Windows as **β beta** with no install command; when `win-v0.1.0` ships, update the site per nibble-site's CLAUDE.md.
+- Design doc: `docs/superpowers/specs/2026-07-27-windows-port-design.md`.
+
+## Working conventions (cross-machine)
+
+- Ben develops from multiple machines and parallel sessions — **pull and read `git log` before editing**, especially README and anything the site mirrors. An unpushed commit in the site repo once caused a deploy to revert live copy (2026-07-27).
+- The landing page is a separate repo: `ben0128/nibble-site` (Cloudflare Pages, manual deploys). Its CLAUDE.md holds the site-side conventions; release step 5 above is the coupling.
+- Numbers in docs and on the site must be measured, not remembered: zip size from the release asset, per-arch size via `lipo -detailed_info`, test count from `make test` output (currently phrased as "checks").
+- Reply to the maintainer in Traditional Chinese; keep technical terms in English.
