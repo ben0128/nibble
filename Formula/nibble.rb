@@ -24,7 +24,7 @@ class Nibble < Formula
 
       This formula installs the CLI only. For the menu bar app bundle —
       low-battery notifications and "start at login" — use the cask instead:
-        brew install --cask --no-quarantine ben0128/nibble/nibble
+        HOMEBREW_CASK_OPTS=--no-quarantine brew install --cask ben0128/nibble/nibble
     EOS
   end
 

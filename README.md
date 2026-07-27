@@ -21,10 +21,10 @@ Homebrew — CLI + menu bar app (recommended):
 ```sh
 brew tap ben0128/nibble
 brew trust ben0128/nibble    # Homebrew requires trusting third-party taps
-brew install --cask --no-quarantine nibble
+HOMEBREW_CASK_OPTS=--no-quarantine brew install --cask nibble
 ```
 
-The prebuilt app is ad-hoc signed, not notarized, so `--no-quarantine` is required — without it Gatekeeper reports the app as damaged. Already installed without the flag? Run `xattr -cr /Applications/Nibble.app`. `brew upgrade` re-applies quarantine: upgrade with the same flag, or set `HOMEBREW_CASK_OPTS=--no-quarantine`.
+The prebuilt app is ad-hoc signed, not notarized, so quarantine must be disabled — without that Gatekeeper reports the app as damaged. Already installed without it? Run `xattr -cr /Applications/Nibble.app`. The same applies to `brew upgrade`: keep the env var on upgrades too (or export it in your shell profile). Homebrew 6 removed the `--no-quarantine` CLI flag; the env var works on all versions.
 
 CLI only, built from source (needs the Swift toolchain, `xcode-select --install`):
 
