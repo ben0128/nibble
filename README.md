@@ -16,6 +16,24 @@ Replaces **Logitech G HUB** and **Logi Options+** for what most people actually 
 
 ## Install
 
+Homebrew — CLI + menu bar app (recommended):
+
+```sh
+brew tap ben0128/nibble
+brew trust ben0128/nibble    # Homebrew requires trusting third-party taps
+brew install --cask --no-quarantine nibble
+```
+
+The prebuilt app is ad-hoc signed, not notarized, so `--no-quarantine` is required — without it Gatekeeper reports the app as damaged. Already installed without the flag? Run `xattr -cr /Applications/Nibble.app`. `brew upgrade` re-applies quarantine: upgrade with the same flag, or set `HOMEBREW_CASK_OPTS=--no-quarantine`.
+
+CLI only, built from source (needs the Swift toolchain, `xcode-select --install`):
+
+```sh
+brew install ben0128/nibble/nibble
+```
+
+Or from a clone:
+
 ```sh
 git clone https://github.com/ben0128/nibble && cd nibble
 make                      # build ./nibble
@@ -23,16 +41,6 @@ sudo make install         # optional: /usr/local/bin/nibble
 make install-app          # optional: /Applications/Nibble.app (menu bar app + notifications)
 ./nibble status
 ```
-
-Or via Homebrew:
-
-```sh
-brew tap ben0128/nibble
-brew trust ben0128/nibble    # Homebrew requires trusting third-party taps
-brew install nibble
-```
-
-Homebrew installs the **CLI only**. The menu bar app — which hosts the remap engine and adds low-battery notifications and *start at login* — comes from a source build (`make install-app` above).
 
 First run needs **Input Monitoring** permission: System Settings → Privacy & Security → Input Monitoring → enable your terminal app → re-run. Error `0xE00002E2` means this permission is missing. No restart needed after granting.
 
