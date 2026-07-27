@@ -11,6 +11,16 @@ nibble: $(SOURCES)
 	swiftc -O -swift-version 5 $(SOURCES) -o nibble
 	@echo "binary: $$(du -h nibble | cut -f1)"
 
+# 發佈用：兩個 arch 各編一份再 lipo 合併成 universal binary，接著跑 `make app`
+# 會直接打包這份（app 的依賴 nibble 已比 Sources 新，不會重編回單 arch）。
+# target 版本對齊 Info.plist 的 LSMinimumSystemVersion。
+universal: $(SOURCES)
+	swiftc -O -swift-version 5 $(SOURCES) -target arm64-apple-macos13.0 -o .nibble-arm64
+	swiftc -O -swift-version 5 $(SOURCES) -target x86_64-apple-macos13.0 -o .nibble-x86_64
+	lipo -create .nibble-arm64 .nibble-x86_64 -output nibble
+	rm -f .nibble-arm64 .nibble-x86_64
+	@echo "universal: $$(du -h nibble | cut -f1) ($$(lipo -archs nibble))"
+
 # .app bundle：雙擊啟動選單列模式，並解鎖需要 bundle 的功能（通知、登入項）
 app: nibble
 	rm -rf $(APP)
@@ -83,4 +93,4 @@ clean:
 	rm -f nibble .nibble-tests
 	rm -rf $(APP)
 
-.PHONY: app install-app install uninstall test clean
+.PHONY: universal app install-app install uninstall test clean
