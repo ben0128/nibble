@@ -66,8 +66,12 @@ jobs:
           sed -i '' -E "s|^  sha256 \".*\"|  sha256 \"${ZIP_SHA}\"|" Casks/nibble.rb
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -am "nibble ${VERSION} (formula + cask)"
-          git push
+          if git diff --quiet; then
+            echo "tap already up to date for ${VERSION} — nothing to push"
+          else
+            git commit -am "nibble ${VERSION} (formula + cask)"
+            git push
+          fi
           # Formula/ 在主 repo 有一份人工同步的副本——這裡順手對齊，省一次手動同步
           cd "$GITHUB_WORKSPACE"
           git fetch origin main
