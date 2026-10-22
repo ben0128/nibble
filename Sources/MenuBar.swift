@@ -41,7 +41,7 @@ private func acquireMenuBarLock() -> Bool {
 func runMenuBar() -> Int32 {
     guard acquireMenuBarLock() else {
         // 從 Finder 啟動時沒有終端機可印訊息——直接把既有那個實例叫到前面才看得出發生什麼事
-        print("Nibble menu bar is already running.")
+        print(localized("menubar.already.running"))
         if let id = Bundle.main.bundleIdentifier {
             let others = NSRunningApplication.runningApplications(withBundleIdentifier: id)
                 .filter { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
@@ -61,7 +61,7 @@ func runMenuBar() -> Int32 {
 final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var timer: Timer?
-    private let deviceItem = NSMenuItem(title: "Detecting…", action: nil, keyEquivalent: "")
+    private let deviceItem = NSMenuItem(title: localized("menubar.detecting"), action: nil, keyEquivalent: "")
     private let detailItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private var dpiItems: [Int: NSMenuItem] = [:]
     private var rateItems: [Int: NSMenuItem] = [:]
@@ -96,7 +96,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var pauseItem: NSMenuItem!
     private var profileRoot: NSMenuItem!
     private var remapPaused = false
-    private let engineItem = NSMenuItem(title: "Remapping: off", action: nil, keyEquivalent: "")
+    private let engineItem = NSMenuItem(title: localized("menubar.remapping") + ": off", action: nil, keyEquivalent: "")
 
     static let dpiPresets = [400, 800, 1200, 1600, 2000, 2400, 2800, 3200]
     static let ratePresets = [1000, 500, 250, 125]
@@ -111,8 +111,8 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(detailItem)
 
         // 權限未授權時才出現的引導（可點，直接開系統設定）
-        permissionItem = makeItem("⚠️ Input Monitoring required", #selector(openInputMonitoring))
-        openSettingsItem = makeItem("Open System Settings…", #selector(openInputMonitoring))
+        permissionItem = makeItem(localized("menubar.permission.required"), #selector(openInputMonitoring))
+        openSettingsItem = makeItem(localized("menubar.open.system.settings"), #selector(openInputMonitoring))
         permissionItem.isHidden = true
         openSettingsItem.isHidden = true
         menu.addItem(permissionItem)
@@ -120,7 +120,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        dpiRoot = NSMenuItem(title: "DPI", action: nil, keyEquivalent: "")
+        dpiRoot = NSMenuItem(title: localized("menubar.dpi"), action: nil, keyEquivalent: "")
         let dpiMenu = NSMenu()
         for v in Self.dpiPresets {
             let item = NSMenuItem(title: "\(v)", action: #selector(setDPIAction(_:)), keyEquivalent: "")
@@ -132,7 +132,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         dpiRoot.submenu = dpiMenu
         menu.addItem(dpiRoot)
 
-        rateRoot = NSMenuItem(title: "Report rate", action: nil, keyEquivalent: "")
+        rateRoot = NSMenuItem(title: localized("menubar.report.rate"), action: nil, keyEquivalent: "")
         let rateMenu = NSMenu()
         for v in Self.ratePresets {
             let item = NSMenuItem(title: "\(v) Hz", action: #selector(setRateAction(_:)), keyEquivalent: "")
@@ -144,7 +144,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rateRoot.submenu = rateMenu
         menu.addItem(rateRoot)
 
-        rgbRoot = NSMenuItem(title: "Lighting", action: nil, keyEquivalent: "")
+        rgbRoot = NSMenuItem(title: localized("menubar.lighting"), action: nil, keyEquivalent: "")
         let rgbMenu = NSMenu()
         for (title, kind) in [("Off", "off"),
                               ("Cycle", "cycle"),
@@ -159,26 +159,26 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(rgbRoot)
 
         // 改鍵從一行唯讀訊息升級成可操作的子選單：暫停／恢復、看狀態、直接跳去編輯
-        remapRoot = NSMenuItem(title: "Remapping", action: nil, keyEquivalent: "")
+        remapRoot = NSMenuItem(title: localized("menubar.remapping"), action: nil, keyEquivalent: "")
         let remapMenu = NSMenu()
-        pauseItem = makeItem("Pause remapping", #selector(togglePause))
-        profileRoot = NSMenuItem(title: "Profile", action: nil, keyEquivalent: "")
+        pauseItem = makeItem(localized("menubar.pause.remapping"), #selector(togglePause))
+        profileRoot = NSMenuItem(title: localized("common.profile"), action: nil, keyEquivalent: "")
         profileRoot.submenu = NSMenu()
         remapMenu.addItem(profileRoot)
         remapMenu.addItem(.separator())
         remapMenu.addItem(pauseItem)
         remapMenu.addItem(engineItem)          // 狀態／失敗原因，必要時可點去開權限設定
         remapMenu.addItem(.separator())
-        remapMenu.addItem(makeItem("Edit buttons…", #selector(openButtonsAction)))
+        remapMenu.addItem(makeItem(localized("menubar.edit.buttons"), #selector(openButtonsAction)))
         remapRoot.submenu = remapMenu
         menu.addItem(remapRoot)
 
         menu.addItem(.separator())
-        menu.addItem(makeItem("Settings…", #selector(openPanelAction), key: ","))
-        menu.addItem(makeItem("Save current settings", #selector(saveAction)))
-        menu.addItem(makeItem("Refresh now", #selector(refreshAction), key: "r"))
+        menu.addItem(makeItem(localized("menubar.settings"), #selector(openPanelAction), key: ","))
+        menu.addItem(makeItem(localized("menubar.save.current.settings"), #selector(saveAction)))
+        menu.addItem(makeItem(localized("menubar.refresh.now"), #selector(refreshAction), key: "r"))
         menu.addItem(.separator())
-        menu.addItem(makeItem("Quit (mouse keeps working)", #selector(quitAction), key: "q"))
+        menu.addItem(makeItem(localized("menubar.quit"), #selector(quitAction), key: "q"))
         statusItem.menu = menu
 
         refresh()
@@ -235,13 +235,13 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         engine?.stop()
         engine = nil
         defer { updateRemapSummary() }
-        guard !remapPaused else { engineItem.title = "Paused — buttons behave normally"; return }
+        guard !remapPaused else { engineItem.title = localized("menubar.paused.full"); return }
         engineNeedsAX = false
         engineItem.action = nil
         engineItem.target = nil
         let maps = activeButtonMaps(loadConfig())
         guard !maps.isEmpty else {
-            engineItem.title = "Remapping: none configured"
+            engineItem.title = localized("menubar.none.configured")
             EngineState.writeStatus(["active": false, "reason": "no mappings configured", "mappings": 0, "axTrusted": axTrusted()])
             return
         }
@@ -249,7 +249,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let dev = try openDevice()
             let devName = (try? dev.name()) ?? "unknown"
             guard let devMap = maps[devName], !devMap.isEmpty else {
-                engineItem.title = "Remapping: none for \(devName)"
+                engineItem.title = String(format: localized("menubar.none.for.device"), devName)
                 EngineState.writeStatus(["active": false, "reason": "no mappings for \(devName)", "mappings": 0, "axTrusted": axTrusted()])
                 return
             }
@@ -259,7 +259,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 axPrompted = true
                 // 這是最容易靜默失敗的一步：整列做成可點的捷徑，並寫進狀態檔讓 doctor 看得到
                 engineNeedsAX = true
-                engineItem.title = "Remapping: ⚠️ needs Accessibility — click here"
+                engineItem.title = localized("menubar.needs.accessibility")
                 engineItem.action = #selector(openAccessibility)
                 engineItem.target = self
                 EngineState.writeStatus(["active": false, "reason": "Accessibility permission not granted",
@@ -270,7 +270,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             guard case let tr = dev.transport,
                   let eng = makeRemapEngine(transport: tr, dev: dev, savedMap: devMap) else {
-                engineItem.title = "Remapping: unsupported device"
+                engineItem.title = localized("menubar.unsupported.device")
                 EngineState.writeStatus(["active": false, "reason": "device exposes neither 0x8110 nor 0x1b04",
                                    "mappings": devMap.count, "axTrusted": axTrusted()])
                 return
@@ -283,19 +283,19 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 guard let self, let eng, self.engine === eng else { return }
                 self.engine = nil
                 eng.stop()
-                self.engineItem.title = "Remapping: device disconnected — will retry"
+                self.engineItem.title = localized("menubar.device.disconnected")
                 EngineState.writeStatus(["active": false, "reason": "device disconnected — waiting for reconnect",
                                          "axTrusted": axTrusted()])
                 self.updateRemapSummary()
                 self.scheduleEngineRetry()
             }
             engineRetryDelay = 4
-            engineItem.title = "Remapping: ✓ \(eng.mappingCount) active"
+            engineItem.title = String(format: localized("menubar.active.count"), eng.mappingCount)
             EngineState.writeStatus(["active": true, "reason": "running", "mappings": eng.mappingCount,
                                "axTrusted": axTrusted(), "device": devName,
                                "path": dev.has(0x8110) ? "0x8110 spy" : "0x1b04 divert"])
         } catch {
-            engineItem.title = "Remapping: ❌ \(error)"
+            engineItem.title = String(format: localized("menubar.error"), "\(error)")
             EngineState.writeStatus(["active": false, "reason": "\(error)", "axTrusted": axTrusted(),
                                "mappings": maps.values.reduce(0, { $0 + $1.count })])
             scheduleEngineRetry()
@@ -320,12 +320,12 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if remapPaused {
             engine?.stop()
             engine = nil
-            engineItem.title = "Paused — buttons behave normally"
+            engineItem.title = localized("menubar.paused.full")
             EngineState.writeStatus(["active": false, "reason": "paused by user"])
         } else {
             startEngine()
         }
-        pauseItem.title = remapPaused ? "Resume remapping" : "Pause remapping"
+        pauseItem.title = remapPaused ? localized("menubar.resume.remapping") : localized("menubar.pause.remapping")
         updateRemapSummary()
     }
 
@@ -344,11 +344,11 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(item)
         }
         menu.addItem(.separator())
-        let edit = NSMenuItem(title: "Edit profiles…", action: #selector(openButtonsAction), keyEquivalent: "")
+        let edit = NSMenuItem(title: localized("menubar.edit.profiles"), action: #selector(openButtonsAction), keyEquivalent: "")
         edit.target = self
         menu.addItem(edit)
         profileRoot.submenu = menu
-        profileRoot.title = names.count > 1 ? "Profile\t\(current)" : "Profile"
+        profileRoot.title = names.count > 1 ? localized("common.profile") + "\t\(current)" : localized("common.profile")
     }
 
     @objc private func switchProfileAction(_ sender: NSMenuItem) {
@@ -367,12 +367,15 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateRemapSummary() {
         let cfg = loadConfig()
         let profileTag = profileNames(cfg).count > 1 ? "\(currentProfileName(cfg)) · " : ""
-        if remapPaused { remapRoot.title = "Remapping\tpaused"; return }
-        if let e = engine, e.active { remapRoot.title = "Remapping\t\(profileTag)\(e.mappingCount) active" }
+        if remapPaused { remapRoot.title = localized("menubar.remapping") + "\t" + localized("menubar.paused"); return }
+        if let e = engine, e.active {
+            remapRoot.title = localized("menubar.remapping") + "\t" + profileTag
+                + String(format: localized("menubar.active"), e.mappingCount)
+        }
         else if activeButtonMaps(cfg).values.reduce(0, { $0 + $1.count }) == 0 {
-            remapRoot.title = "Remapping\tnone"
+            remapRoot.title = localized("menubar.remapping") + "\t" + localized("menubar.none")
         } else {
-            remapRoot.title = "Remapping\t⚠️ not running"
+            remapRoot.title = localized("menubar.remapping") + "\t" + localized("menubar.not.running")
         }
     }
 
@@ -388,8 +391,8 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
             guard granted else { return }
             let content = UNMutableNotificationContent()
-            content.title = "\(device) at \(percent)%"
-            content.body = "Time to charge 🔌"
+            content.title = String(format: localized("menubar.battery.title"), device, percent)
+            content.body = localized("menubar.battery.body")
             center.add(UNNotificationRequest(identifier: "nibble.lowbattery",
                                              content: content, trigger: nil))
         }
@@ -427,23 +430,25 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func syncChecks(_ dev: HIDPPDevice) {
         let curDPI = (try? dev.currentDPI()) ?? -1
         for (v, item) in dpiItems { item.state = (v == curDPI) ? .on : .off }
-        dpiRoot.title = curDPI > 0 ? "DPI\t\(curDPI)" : "DPI"
+        dpiRoot.title = curDPI > 0 ? localized("menubar.dpi") + "\t\(curDPI)" : localized("menubar.dpi")
         let curRate = (try? dev.reportRateHz()) ?? -1
         for (v, item) in rateItems { item.state = (v == curRate) ? .on : .off }
-        rateRoot.title = curRate > 0 ? "Report rate\t\(curRate) Hz" : "Report rate"
+        rateRoot.title = curRate > 0
+            ? localized("menubar.report.rate") + String(format: "\t%d Hz", curRate)
+            : localized("menubar.report.rate")
         // 燈效無法回讀，只能顯示本 session 設過的值
         for (kind, item) in rgbItems { item.state = (kind == lastRGB) ? .on : .off }
-        let rgbLabel = lastRGB.map { $0 == "off" ? "Off" : $0.capitalized }
-        rgbRoot.title = "Lighting" + (rgbLabel.map { "\t\($0)" } ?? "")
+        let rgbLabel = lastRGB.map { $0 == "off" ? localized("common.off") : $0.capitalized }
+        rgbRoot.title = localized("menubar.lighting") + (rgbLabel.map { "\t\($0)" } ?? "")
     }
 
     /// 讀不到裝置時：控制列變灰、父列不顯示過期數值（顯示舊值等於在說謊）
     private func setControlsLive(_ live: Bool) {
         for item in [dpiRoot, rateRoot, rgbRoot] { item?.isEnabled = live }
         if !live {
-            dpiRoot.title = "DPI"
-            rateRoot.title = "Report rate"
-            rgbRoot.title = "Lighting"
+            dpiRoot.title = localized("menubar.dpi")
+            rateRoot.title = localized("menubar.report.rate")
+            rgbRoot.title = localized("menubar.lighting")
         }
     }
 
@@ -464,12 +469,13 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         do {
             let dev = try openDevice()
             setPermissionUI(denied: false)
-            deviceItem.title = (try? dev.name()) ?? "Logitech #\(lastIndex)"
+            deviceItem.title = (try? dev.name()) ?? String(format: "Logitech #%d", lastIndex)
             if let b = try? dev.battery() {
                 batteryPercent = b.percent
                 batteryCharging = b.charging
                 let volt = b.millivolts.map { String(format: " · %.2fV", Double($0) / 1000) } ?? ""
-                detailItem.title = "\(b.percent)% · \(b.charging ? "charging ⚡" : "discharging")\(volt)"
+                let state = b.charging ? localized("common.charging") + " ⚡" : localized("common.discharging")
+                detailItem.title = "\(b.percent)% · \(state)\(volt)"
                 statusTooltip = "\(deviceItem.title) · \(b.percent)%\(volt)"
                 applyStatusAppearance()
                 notifyLowBatteryIfNeeded(percent: b.percent, charging: b.charging, device: deviceItem.title,
@@ -481,25 +487,25 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } catch let e as HIDPPError {
             if case .transport(let msg) = e, msg.contains("Input Monitoring") {
                 batteryPercent = nil
-                statusTooltip = "Nibble — Input Monitoring permission required"
+                statusTooltip = localized("menubar.permission.tooltip")
                 applyStatusAppearance()
-                deviceItem.title = "Nibble can't read your mouse"
-                detailItem.title = "Grant Input Monitoring, then Refresh"
+                deviceItem.title = localized("menubar.input.permission.title")
+                detailItem.title = localized("menubar.input.permission.detail")
                 setPermissionUI(denied: true)
             } else {
                 batteryPercent = nil
-                statusTooltip = "Nibble — mouse offline or asleep"
+                statusTooltip = localized("menubar.offline.tooltip")
                 applyStatusAppearance()
-                deviceItem.title = "Mouse asleep"
-                detailItem.title = "Move it to wake — values below are hidden until then"
+                deviceItem.title = localized("menubar.mouse.asleep")
+                detailItem.title = localized("menubar.mouse.asleep.detail")
                 setPermissionUI(denied: false)
                 setControlsLive(false)
             }
         } catch {
             batteryPercent = nil
-            statusTooltip = "Nibble — \(error)"
+            statusTooltip = String(format: localized("menubar.error.tooltip"), "\(error)")
             applyStatusAppearance()
-            deviceItem.title = "Mouse offline"
+            deviceItem.title = localized("menubar.mouse.offline")
             detailItem.title = "\(error)"
             setControlsLive(false)
         }
@@ -526,7 +532,9 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         act { dev in
             var got = 0
             try uiHostFallback(dev) { got = try dev.setDPI(target) }
-            detailItem.title = got == target ? "DPI → \(got) ✓" : "⚠️ asked \(target), device reports \(got)"
+            detailItem.title = got == target
+                ? String(format: localized("menubar.status.dpi"), got)
+                : String(format: localized("menubar.status.dpi.mismatch"), target, got)
             flash(got == target ? "✓\(got)" : "⚠️\(got)")
         }
     }
@@ -536,7 +544,9 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         act { dev in
             var got = 0
             try uiHostFallback(dev) { got = try dev.setReportRateHz(hz) }
-            detailItem.title = got == hz ? "Report rate → \(got) Hz ✓" : "⚠️ asked \(hz), device reports \(got)"
+            detailItem.title = got == hz
+                ? String(format: localized("menubar.status.rate"), got)
+                : String(format: localized("menubar.status.rate.mismatch"), hz, got)
             flash(got == hz ? "✓\(got)Hz" : "⚠️\(got)Hz")
         }
     }
@@ -547,7 +557,9 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         act { dev in
             let applied = try uiSetRGB(dev, kind: kind)
             lastRGB = kind
-            detailItem.title = applied > 0 ? "RGB → \(title) ✓" : "⚠️ effect not available on this device"
+            detailItem.title = applied > 0
+                ? String(format: localized("menubar.status.rgb"), title)
+                : localized("menubar.status.rgb.unavailable")
             flash(applied > 0 ? (kind == "off" ? "✓💡" : "✓🌈") : "⚠️")
         }
     }
@@ -571,7 +583,7 @@ final class MenuBarDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func saveAction() {
         act { dev in
             try uiSaveConfig(dev, rgb: lastRGB)
-            detailItem.title = "Saved as default ✓ replayed at login"
+            detailItem.title = localized("menubar.saved.default")
             flash("✓💾")
         }
     }

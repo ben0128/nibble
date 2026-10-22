@@ -19,13 +19,15 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
     private let table = NSTableView()
     private var helpBadge: NSImageView!
-    private let learnButton = NSButton(title: "Press to identify", target: nil, action: nil)
+    private let learnButton = NSButton(title: localized("buttons.identify"), target: nil, action: nil)
     private let profilePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let profileMenuButton = NSPopUpButton(frame: .zero, pullsDown: true)
 
     // 右側編輯面板
-    private let editorTitle = NSTextField(labelWithString: "No button selected")
-    private let typeControl = NSSegmentedControl(labels: ["Keys", "Macro", "System", "Disable", "Default"],
+    private let editorTitle = NSTextField(labelWithString: localized("buttons.none.selected"))
+    private let typeControl = NSSegmentedControl(labels: [
+        localized("buttons.type.keys"), localized("buttons.type.macro"), localized("buttons.type.system"),
+        localized("buttons.type.disable"), localized("buttons.type.default")],
                                                  trackingMode: .selectOne, target: nil, action: nil)
     private let macroField = NSTextField(string: "")
     private let recorder = KeyRecorderView(frame: .zero)
@@ -58,11 +60,11 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     func makeView() -> NSView {
         // 兩欄平分寬度：button 固定夠放最長的鍵名，action 吃掉剩下全部，
         // 右側不留空白（否則看起來像有第三個空欄位）
-        let btnCol = withTitle("button", "col-btn", 92)
+        let btnCol = withTitle(localized("common.button"), "col-btn", 92)
         btnCol.minWidth = 80
         btnCol.maxWidth = 110
         table.addTableColumn(btnCol)
-        let actCol = withTitle("action", "col-act", 140)
+        let actCol = withTitle(localized("common.action"), "col-act", 140)
         actCol.minWidth = 100
         table.addTableColumn(actCol)
         table.delegate = self
@@ -78,23 +80,23 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         table.target = self
 
         let ctx = NSMenu()
-        let clearItem = NSMenuItem(title: "Clear mapping", action: #selector(clearSelected), keyEquivalent: "")
+        let clearItem = NSMenuItem(title: localized("buttons.clear.mapping"), action: #selector(clearSelected), keyEquivalent: "")
         clearItem.target = self
         ctx.addItem(clearItem)
         table.menu = ctx
 
         profilePopup.target = self
         profilePopup.action = #selector(profileChanged)
-        profilePopup.toolTip = "Each profile is its own set of button mappings. Switching one takes effect immediately — the menu bar has the same list."
+        profilePopup.toolTip = localized("buttons.tooltip.profile")
         profilePopup.translatesAutoresizingMaskIntoConstraints = false
         profilePopup.widthAnchor.constraint(equalToConstant: 150).isActive = true
 
         // pull-down 的第一項是標題，不會被選中
         profileMenuButton.addItem(withTitle: "⋯")
-        for (title, sel) in [("New profile…", #selector(newProfile)),
-                             ("Duplicate this profile…", #selector(duplicateProfile)),
-                             ("Rename…", #selector(renameCurrentProfile)),
-                             ("Delete", #selector(deleteCurrentProfile))] {
+        for (title, sel) in [(localized("buttons.profile.new"), #selector(newProfile)),
+                             (localized("buttons.profile.duplicate"), #selector(duplicateProfile)),
+                             (localized("buttons.profile.rename"), #selector(renameCurrentProfile)),
+                             (localized("buttons.profile.delete"), #selector(deleteCurrentProfile))] {
             let item = NSMenuItem(title: title, action: sel, keyEquivalent: "")
             item.target = self
             profileMenuButton.menu?.addItem(item)
@@ -102,7 +104,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         profileMenuButton.translatesAutoresizingMaskIntoConstraints = false
         profileMenuButton.widthAnchor.constraint(equalToConstant: 46).isActive = true
 
-        let profileRow = NSStackView(views: [NSTextField(labelWithString: "Profile"), profilePopup, profileMenuButton])
+        let profileRow = NSStackView(views: [NSTextField(labelWithString: localized("common.profile")), profilePopup, profileMenuButton])
         profileRow.spacing = 8
         profileRow.translatesAutoresizingMaskIntoConstraints = false
 
@@ -119,12 +121,9 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         learnButton.action = #selector(toggleLearn)
         learnButton.translatesAutoresizingMaskIntoConstraints = false
 
-        learnButton.toolTip = "Press a physical mouse button and its row is selected. Wheel scrolling isn't a button; the wheel click and tilts are."
-        table.toolTip = "Right-click a row to clear its mapping. G1/G2 (left/right click) can't be remapped so the mouse can never lock you out."
-        helpBadge = nibbleHelpBadge(
-            "Edits are staged, not written as you go — press Save (or Return) to commit them, "
-            + "and the menu bar reloads the remap engine. Right-click a row to clear it. "
-            + "G1/G2 stay untouched so the mouse can never lock you out.")
+        learnButton.toolTip = localized("buttons.tooltip.identify")
+        table.toolTip = localized("buttons.tooltip.table")
+        helpBadge = nibbleHelpBadge(localized("buttons.help.staged"))
         helpBadge.translatesAutoresizingMaskIntoConstraints = false
 
         let editor = makeEditor()
@@ -169,8 +168,8 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         typeControl.segmentDistribution = .fillProportionally
 
         recorder.onChange = { [weak self] _ in self?.applyEditor() }
-        recorder.toolTip = "Click here, then press the combination you want. Esc clears it."
-        typeControl.toolTip = "Keystroke sends one combination · Macro plays a sequence · System runs a built-in action, app or deeplink · Disable makes the button inert · Default hands it back to the mouse"
+        recorder.toolTip = localized("buttons.tooltip.recorder")
+        typeControl.toolTip = localized("buttons.tooltip.types")
         recorder.translatesAutoresizingMaskIntoConstraints = false
         recorder.heightAnchor.constraint(equalToConstant: 30).isActive = true
 
@@ -178,14 +177,14 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         macroField.target = self
         macroField.action = #selector(applyEditor)
         macroField.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        macroField.toolTip = "Comma-separated steps. Each step is a key combination or a delay (150ms, 1.5s). Max 64 steps, 30s total."
+        macroField.toolTip = localized("buttons.tooltip.macro")
 
         systemPopup.addItems(withTitles: SystemAction.allCases.map(\.rawValue))
         systemPopup.target = self
         systemPopup.action = #selector(applyEditor)
 
         appField.placeholderString = "app name or deeplink"
-        appField.toolTip = "An app name (Safari) launches it. Anything containing :// is opened as a deeplink — raycast://extensions/…, obsidian://…, shortcuts://…"
+        appField.toolTip = localized("buttons.tooltip.app")
         appField.target = self
         appField.action = #selector(appFieldCommitted)
         appField.font = .systemFont(ofSize: 12)
@@ -233,8 +232,8 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             try switchProfile(to: name)
             reload()
             onStatus?(dropped > 0
-                ? "Profile: \(name) · discarded \(dropped) unsaved button change\(dropped == 1 ? "" : "s")"
-                : "Profile: \(name)")
+                ? String(format: localized("buttons.profile.discarded"), name, dropped)
+                : String(format: localized("buttons.profile.switched"), name))
         } catch { onStatus?("❌ \(error)") }
     }
 
@@ -246,7 +245,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         field.stringValue = initial
         alert.accessoryView = field
         alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: localized("common.cancel"))
         alert.window.initialFirstResponder = field
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
         let name = field.stringValue.trimmingCharacters(in: .whitespaces)
@@ -265,34 +264,37 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     }
 
     @objc private func newProfile() {
-        guard let name = askName("Name for the new profile") else { return }
-        do { try createProfile(name); afterProfileChange("Created \(name) — it starts empty") }
+        guard let name = askName(localized("buttons.new.profile.name")) else { return }
+        do { try createProfile(name); afterProfileChange(String(format: localized("buttons.created.profile"), name)) }
         catch { onStatus?("❌ \(error)") }
     }
 
     @objc private func duplicateProfile() {
         let from = currentProfileName(loadConfig())
-        guard let name = askName("Name for the copy of \(from)", "\(from) copy") else { return }
-        do { try createProfile(name, copyFrom: from); afterProfileChange("Created \(name) from \(from)") }
+        guard let name = askName(String(format: localized("buttons.copy.profile.name"), from), "\(from) copy") else { return }
+        do {
+            try createProfile(name, copyFrom: from)
+            afterProfileChange(String(format: localized("buttons.created.profile.from"), name, from))
+        }
         catch { onStatus?("❌ \(error)") }
     }
 
     @objc private func renameCurrentProfile() {
         let old = currentProfileName(loadConfig())
-        guard let name = askName("Rename \(old) to", old), name != old else { return }
-        do { try renameProfile(old, to: name); afterProfileChange("Renamed to \(name)") }
+        guard let name = askName(String(format: localized("buttons.rename.profile.to"), old), old), name != old else { return }
+        do { try renameProfile(old, to: name); afterProfileChange(String(format: localized("buttons.renamed.profile"), name)) }
         catch { onStatus?("❌ \(error)") }
     }
 
     @objc private func deleteCurrentProfile() {
         let name = currentProfileName(loadConfig())
         let alert = NSAlert()
-        alert.messageText = "Delete the \(name) profile?"
-        alert.informativeText = "Its button mappings go with it. Other profiles are untouched."
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = String(format: localized("buttons.delete.profile.title"), name)
+        alert.informativeText = localized("buttons.delete.profile.detail")
+        alert.addButton(withTitle: localized("common.delete"))
+        alert.addButton(withTitle: localized("common.cancel"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        do { try deleteProfile(name); afterProfileChange("Deleted \(name)") }
+        do { try deleteProfile(name); afterProfileChange(String(format: localized("buttons.deleted.profile"), name)) }
         catch { onStatus?("❌ \(error)") }
     }
 
@@ -323,7 +325,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             table.sizeLastColumnToFit()   // 撐滿捲動區，右側不留下看似空欄的縫隙
             if table.selectedRow < 0 { table.scrollRowToVisible(0) }
             updateEditor()
-            onStatus?("\(deviceName) · \(rows.count) buttons")
+            onStatus?(String(format: localized("buttons.device.summary"), deviceName, rows.count))
         } catch {
             rows = []
             table.reloadData()
@@ -345,10 +347,10 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             switch a.type {
             case "keys", "macro": text = a.keys ?? ""
             case "system": text = a.action ?? ""
-            default: text = "disabled"
+            default: text = localized("common.disabled")
             }
         } else {
-            text = r.remappable ? "—" : "(system)"
+            text = r.remappable ? "—" : localized("buttons.action.system")
         }
         let label = NSTextField(labelWithString: text)
         label.font = highlighted == row ? .boldSystemFont(ofSize: 12) : .systemFont(ofSize: 12)
@@ -375,8 +377,8 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         defer { suppressEditorApply = false }
 
         guard let i = selectedRow else {
-            editorTitle.stringValue = "No button selected"
-            editorNote.stringValue = "Select a row, or use Press to identify and press the physical button."
+            editorTitle.stringValue = localized("buttons.none.selected")
+            editorNote.stringValue = localized("buttons.note.select")
             setEditorEnabled(false)
             recorder.isHidden = true
             systemPopup.isHidden = true
@@ -386,7 +388,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         let r = rows[i]
         editorTitle.stringValue = r.name
         guard r.remappable else {
-            editorNote.stringValue = "Primary buttons stay untouched so the mouse can never lock you out."
+            editorNote.stringValue = localized("buttons.primary.note")
             setEditorEnabled(false)
             recorder.isHidden = true
             systemPopup.isHidden = true
@@ -423,11 +425,11 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         systemPopup.isHidden = idx != 2
         appField.isHidden = idx != 2
         switch idx {
-        case 0: editorNote.stringValue = "Click the field and press the combination. Esc clears it."
-        case 1: editorNote.stringValue = "Steps separated by commas — key combos and delays like 150ms."
-        case 2: editorNote.stringValue = "Pick a system action, or type an app name / deeplink to open."
-        case 3: editorNote.stringValue = "The button will do nothing at all."
-        default: editorNote.stringValue = "The mouse handles this button itself."
+        case 0: editorNote.stringValue = localized("buttons.note.keys")
+        case 1: editorNote.stringValue = localized("buttons.note.macro")
+        case 2: editorNote.stringValue = localized("buttons.note.system")
+        case 3: editorNote.stringValue = localized("buttons.note.disable")
+        default: editorNote.stringValue = localized("buttons.note.default")
         }
     }
 
@@ -453,7 +455,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             let seq = macroField.stringValue.trimmingCharacters(in: .whitespaces)
             guard !seq.isEmpty else { return }
             guard parseMacro(seq) != nil else {
-                onStatus?("⚠️ Can't read that macro — steps are key combos or delays (150ms), max 64 steps / 30s")
+                onStatus?(localized("buttons.error.macro"))
                 return
             }
             action = ButtonAction(type: "macro", keys: seq, action: nil)
@@ -498,7 +500,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         rows[rowIndex].action = action
         table.reloadData()
         table.selectRowIndexes(IndexSet(integer: rowIndex), byExtendingSelection: false)
-        onStatus?("\(key) → \(describe(action)) · not saved yet")
+        onStatus?(String(format: localized("buttons.stage.not.saved"), key, describe(action)))
         onPendingChange?(pending.count)
     }
 
@@ -514,9 +516,9 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             }
             pending.removeAll()
             onPendingChange?(0)
-            onStatus?("Saved \(count) change\(count == 1 ? "" : "s") — the menu bar reloads the engine")
+            onStatus?(String(format: localized("buttons.saved.changes"), count))
         } catch {
-            onStatus?("❌ save failed: \(error)")
+            onStatus?(String(format: localized("buttons.save.failed"), "\(error)"))
         }
     }
 
@@ -525,7 +527,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         pending.removeAll()
         onPendingChange?(0)
         reload()
-        onStatus?("Discarded unsaved changes")
+        onStatus?(localized("buttons.discarded.changes"))
     }
 
     // MARK: press-to-identify
@@ -541,22 +543,22 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
                 prevMask = 0
                 try dev.buttonSpyStart()
                 tr.onReport = { [weak self] p in self?.handleSpy(p) }
-                onStatus?("Press a mouse button (wheel scrolling is not a button)")
+                onStatus?(localized("buttons.identify.press.mouse"))
             } else if dev.has(0x1b04), let fi = try dev.featureIndex(of: 0x1b04) {
                 // MX 路徑：暫時 divert 所有可 divert 的鍵來聽事件，停止時全部還原
                 spyIdx = fi
                 divertedForLearn = (try dev.controls()).filter(\.divertable).map(\.cid)
                 for cid in divertedForLearn { try? dev.setDivert(cid: cid, on: true) }
                 tr.onReport = { [weak self] p in self?.handleDivertedEvent(p) }
-                onStatus?("Press a mouse button (buttons are inert while identifying)")
+                onStatus?(localized("buttons.identify.inert"))
             } else {
-                onStatus?("This device does not support identify")
+                onStatus?(localized("buttons.identify.unsupported"))
                 return
             }
             spyDev = dev
             spyTransport = tr
             learning = true
-            learnButton.title = "⏹ Stop"
+            learnButton.title = localized("buttons.identify.stop")
         } catch {
             onStatus?("❌ \(error)")
         }
@@ -572,8 +574,8 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         spyDev = nil
         spyTransport = nil
         learning = false
-        learnButton.title = "Press to identify"
-        onStatus?("Identify stopped")
+        learnButton.title = localized("buttons.identify")
+        onStatus?(localized("buttons.identify.stopped"))
     }
 
     func teardown() { if learning { stopLearn() } }
@@ -595,10 +597,10 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         guard let bit = (0..<16).first(where: { newly & (1 << $0) != 0 }) else { return }
         let row = Self.bitToRow(bit)
         guard row < rows.count else {
-            onStatus?("Got bit \(bit) — beyond the button count")
+            onStatus?(String(format: localized("buttons.identify.bit.beyond"), bit))
             return
         }
-        select(row, note: "Detected \(rows[row].name) · bit \(bit)")
+        select(row, note: String(format: localized("buttons.identify.detected.bit"), rows[row].name, bit))
     }
 
     /// MX 路徑事件：payload 是目前按住的 CID 清單
@@ -608,7 +610,7 @@ final class ButtonsPane: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         while i + 1 < p.count && i < 11 {
             let cid = UInt16(p[i]) << 8 | UInt16(p[i + 1])
             if cid != 0, let row = rows.firstIndex(where: { $0.cid == cid }) {
-                select(row, note: "Detected \(rows[row].name)")
+                select(row, note: String(format: localized("buttons.identify.detected"), rows[row].name))
                 return
             }
             i += 2

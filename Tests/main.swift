@@ -400,6 +400,45 @@ runConfigFixtures("config-merge.json")
 
 // MARK: - 選單列存活探測（跨程序判斷，靠 flock 而不是比對程序名）
 
+section("localization")
+do {
+    // make test builds a standalone binary whose Bundle.main is the repo root;
+    // macOS then discovers Resources/zh-Hans.lproj. A released standalone CLI
+    // has no resources, so also assert its English fallback table directly.
+    if Bundle.main.url(forResource: "Localizable", withExtension: "strings",
+                       subdirectory: nil, localization: "zh-Hans") != nil {
+        expectEqual(localized("common.save"), "保存", "a test binary near repo resources resolves zh-Hans")
+        expectEqual(localized("settings.general"), "通用", "…for known UI keys")
+    } else {
+        expectEqual(localized("common.save"), "Save", "a truly standalone executable uses English fallback")
+        expectEqual(localized("settings.general"), "General", "…for known UI keys")
+    }
+    expectEqual(localized("nibble.locale.key.missing"), "nibble.locale.key.missing",
+                "a missing key falls back to the identifier")
+
+    // The standalone test binary has no resource bundle; check the packaged
+    // Chinese table directly so its keys, format specifiers, and translations
+    // stay covered without coupling runtime selection to this executable.
+    let url = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Resources/zh-Hans.lproj/Localizable.strings")
+    if let data = try? Data(contentsOf: url),
+       let table = try? PropertyListSerialization.propertyList(
+           from: data, options: [], format: nil
+       ) as? [String: String] {
+        expectEqual(table["common.save"], "保存", "zh-Hans table translates the save action")
+        expectEqual(table["settings.general"], "通用", "zh-Hans table translates the General tab")
+        expectEqual(table["settings.status.lowbattery.at"], "低电量提醒已设为 %1$d%% ✓",
+                    "integer format placeholders survive translation")
+        let missing = ["common.save", "settings.general", "settings.status.lowbattery.at",
+                       "buttons.help.staged", "settings.help.status"]
+            .filter { table[$0] == nil }
+        expect(missing.isEmpty, "core zh-Hans keys exist: \(missing)")
+    } else {
+        expect(false, "the bundled zh-Hans strings file can be parsed")
+    }
+}
+
 section("menu bar liveness probe")
 do {
     let tmp = URL(fileURLWithPath: NSTemporaryDirectory())

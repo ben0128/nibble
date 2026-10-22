@@ -26,6 +26,7 @@ app: nibble
 	rm -rf $(APP)
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
 	cp Resources/Info.plist $(APP)/Contents/Info.plist
+	cp -R Resources/zh-Hans.lproj $(APP)/Contents/Resources/
 	cp nibble $(APP)/Contents/MacOS/nibble
 	printf 'APPL????' > $(APP)/Contents/PkgInfo
 	@# Finder 會在背景把 com.apple.FinderInfo 加回剛建立的 bundle（這個 repo 在桌面上，
